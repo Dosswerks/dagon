@@ -2079,24 +2079,14 @@
         // Generate smooth terrain
         generateTerrain();
 
-        // Place a few ruins and houses at fixed aspect ratios, varied sizes
+        // Place a few ruins and houses at random sizes (aspect ratio preserved at render time)
         const structureCount = 6 + Math.floor(rng() * 4); // 6-9 structures total
-        // Base dimensions define the aspect ratio (never distorted)
-        const RUIN_BASE_W = 20, RUIN_BASE_H = 28; // aspect ratio 5:7
-        const HOUSE_BASE_W = 16, HOUSE_BASE_H = 14; // aspect ratio 8:7
         for (let i = 0; i < structureCount; i++) {
             const type = rng() < 0.5 ? 'ruin' : 'house';
             const x = rng() * WORLD_W;
-            let w, h;
-            if (type === 'ruin') {
-                const scale = 0.8 + rng() * 0.8; // 0.8× to 1.6× base size
-                w = Math.round(RUIN_BASE_W * scale);
-                h = Math.round(RUIN_BASE_H * scale);
-            } else {
-                const scale = 0.8 + rng() * 0.8;
-                w = Math.round(HOUSE_BASE_W * scale);
-                h = Math.round(HOUSE_BASE_H * scale);
-            }
+            // Random width — height will be derived from image aspect ratio at render time
+            const w = 16 + Math.floor(rng() * 20); // 16–36px wide
+            const h = w; // placeholder, overridden at render
             const terrainY = getTerrainHeight(x);
             groundFeatures.push({
                 type, x, y: terrainY - h, w, h,
@@ -3398,18 +3388,28 @@
                 ctx.fill();
             }
         }
-        // Ground features
+        // Ground features (rendered at correct aspect ratio from source image)
         for (let i = 0; i < groundFeatures.length; i++) {
             const f = groundFeatures[i];
-            const fx = worldToScreenX(f.x), fy = worldToScreenY(f.y);
-            if (fx + f.w < -50 || fx > W + 50) continue;
             const gfKey = 'ground_' + f.type;
             const gfImg = assets[gfKey];
+            let drawW = f.w;
+            let drawH = f.h;
+            // Use actual image aspect ratio if loaded
             if (gfImg && gfImg.complete && gfImg.naturalWidth > 0) {
-                ctx.drawImage(gfImg, fx + shX, fy + shY, f.w, f.h);
+                const aspect = gfImg.naturalWidth / gfImg.naturalHeight;
+                drawH = drawW / aspect;
+            }
+            const fx = worldToScreenX(f.x);
+            // Position bottom edge at terrain level (recalculate y from terrain)
+            const terrainY = getTerrainHeight(f.x);
+            const fy = worldToScreenY(terrainY - drawH);
+            if (fx + drawW < -50 || fx > W + 50) continue;
+            if (gfImg && gfImg.complete && gfImg.naturalWidth > 0) {
+                ctx.drawImage(gfImg, fx + shX, fy + shY, drawW, drawH);
             } else {
                 ctx.fillStyle = f.color;
-                ctx.fillRect(fx + shX, fy + shY, f.w, f.h);
+                ctx.fillRect(fx + shX, fy + shY, drawW, drawH);
             }
         }
         // Bubbles
