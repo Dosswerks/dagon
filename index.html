@@ -191,14 +191,14 @@
         enemyDeath: 0.5,
         mineDetonate: 1.5,
         minePlacement: 0.5,
-        levelComplete: 2.25,
+        levelComplete: 2.8,
         levelBegin: 1.25,
         gameOver: 1.25,
-        deepOneRescued: 1.5,
+        deepOneRescued: 1.875,
         deepOneAbducted: 1.5,
         monolithAttack: 2.0,
         ambient: 1.25,
-        music: 2.25,
+        music: 3.375,
     };
 
     /** Play a one-shot sound effect. */
@@ -406,10 +406,10 @@
             animInterval: 14,
         },
         mutant: {
-            w: 130, h: 54,
+            w: 98, h: 41,
             speed: 2.5,
             points: 400,
-            hb: { x: 10, y: 4, w: 110, h: 46 },
+            hb: { x: 8, y: 3, w: 82, h: 35 },
             animFrames: 2,
             animInterval: 8,
         },
@@ -437,8 +437,8 @@
             [{ x: 25, y: 9 }, { x: 29, y: 8 }],
         ],
         mutant: [
-            [{ x: 82, y: 16 }, { x: 96, y: 17 }],
-            [{ x: 83, y: 17 }, { x: 96, y: 19 }],
+            [{ x: 62, y: 12 }, { x: 72, y: 13 }],
+            [{ x: 62, y: 13 }, { x: 72, y: 14 }],
         ],
     };
 
@@ -1798,8 +1798,8 @@
 
     let enemyProjectilePool = new ObjectPool(
         () => new Projectile({
-            w: 6, h: 6,
-            hb: { x: 0, y: 0, w: 6, h: 6 },
+            w: 12, h: 12,
+            hb: { x: 2, y: 2, w: 8, h: 8 },
             maxLifetime: 120,
             animFrames: 1,
             animInterval: 1,
@@ -2018,6 +2018,7 @@
 
     // Generate static ground features once
     const groundFeatures = [];
+    let groundOccupiedRanges = []; // shared between generateBackground and initLevel
     const bgStars = []; // distant bioluminescent dots for far layer
     const fishSchools = []; // background fish schools
     let causticPhase = 0;
@@ -2079,13 +2080,34 @@
         // Generate smooth terrain
         generateTerrain();
 
-        // Place a few ruins and houses at random sizes (aspect ratio preserved at render time)
+        // Place a few ruins and houses at random sizes, no overlapping
+        // Reserved positions: monolith at WORLD_W/2, plus tentacles and other structures
+        const occupiedRanges = []; // array of {x, w} representing occupied horizontal spans
+        // Reserve monolith position
+        const monoX = WORLD_W / 2 - MONOLITH_CFG.w / 2;
+        occupiedRanges.push({ x: monoX - 20, w: MONOLITH_CFG.w + 40 });
+
         const structureCount = 6 + Math.floor(rng() * 4); // 6-9 structures total
         for (let i = 0; i < structureCount; i++) {
             const type = rng() < 0.5 ? 'ruin' : 'house';
-            const x = rng() * WORLD_W;
-            // Random width — height will be derived from image aspect ratio at render time
             const w = 16 + Math.floor(rng() * 20); // 16–36px wide
+            // Find a non-overlapping position
+            let x = 0;
+            let placed = false;
+            for (let attempt = 0; attempt < 30; attempt++) {
+                x = rng() * WORLD_W;
+                let overlap = false;
+                for (let r = 0; r < occupiedRanges.length; r++) {
+                    const range = occupiedRanges[r];
+                    if (x + w > range.x && x < range.x + range.w) {
+                        overlap = true;
+                        break;
+                    }
+                }
+                if (!overlap) { placed = true; break; }
+            }
+            if (!placed) continue; // skip if can't find space
+            occupiedRanges.push({ x: x, w: w + 10 }); // add padding
             const h = w; // placeholder, overridden at render
             const terrainY = getTerrainHeight(x);
             groundFeatures.push({
@@ -2093,6 +2115,9 @@
                 color: type === 'house' ? '#2a3a4a' : '#3a4a5a',
             });
         }
+
+        // Store occupied ranges for tentacle placement in initLevel
+        groundOccupiedRanges = occupiedRanges;
 
         // Far layer bioluminescent dots (each with unique parallax depth)
         for (let i = 0; i < 80; i++) {
@@ -2305,23 +2330,37 @@
             deepOnes.push(d);
         }
 
-        // Spawn tentacle obstacles (anchored behind ocean floor)
+        // Spawn tentacle obstacles (anchored behind ocean floor, no overlapping)
         const tentacleCount = Math.round(randomRange(TENTACLE_CFG.count.min, TENTACLE_CFG.count.max));
         for (let i = 0; i < tentacleCount; i++) {
-            const x = rng() * WORLD_W;
+            let x = 0;
+            let placed = false;
+            for (let attempt = 0; attempt < 30; attempt++) {
+                x = rng() * WORLD_W;
+                let overlap = false;
+                for (let r = 0; r < groundOccupiedRanges.length; r++) {
+                    const range = groundOccupiedRanges[r];
+                    if (x + TENTACLE_CFG.w > range.x && x < range.x + range.w) {
+                        overlap = true;
+                        break;
+                    }
+                }
+                if (!overlap) { placed = true; break; }
+            }
+            if (!placed) continue;
+            groundOccupiedRanges.push({ x: x, w: TENTACLE_CFG.w + 20 });
             const h = randomRange(TENTACLE_CFG.minHeight, TENTACLE_CFG.maxHeight);
             const baseY = getTerrainHeight(x);
             tentacles.push({
                 x: x,
-                baseY: baseY,          // anchor point (terrain surface)
+                baseY: baseY,
                 h: h,
                 w: TENTACLE_CFG.w,
                 phase: rng() * Math.PI * 2,
-                // Rise state: how much of the tentacle is visible (0 = hidden, 1 = fully risen)
                 riseAmount: 0,
-                riseDir: 1,            // 1 = rising, -1 = sinking
-                pauseTimer: 0,         // ms remaining at top/bottom pause
-                riseDelay: rng() * 5000, // stagger start times
+                riseDir: 1,
+                pauseTimer: 0,
+                riseDelay: rng() * 5000,
             });
         }
 
@@ -3086,7 +3125,10 @@
                     playSound('levelBegin');
                     startLoop('music', musicGain);
                     startLoop('ambient', ambientGain);
-                    state.mode = 'PLAYING';
+                    // Show level announcement
+                    state.levelAnnounce = true;
+                    state.transitionTimer = 150;
+                    state.mode = 'LEVEL_TRANSITION';
                 }
                 // Q key — return to title screen
                 if (input.quit) {
@@ -3424,38 +3466,43 @@
         if (monolith && monolith.alive) {
             const mx = worldToScreenX(monolith.x), my = worldToScreenY(monolith.y);
             const monoImg = assets.monolith;
-            // Damage glow: draw sprite outline in red using offscreen canvas + shadow
-            if (monolith.hp < MONOLITH_CFG.maxHP * 0.5 && monoImg && monoImg.complete && monoImg.naturalWidth > 0) {
-                const glowAlpha = 0.3 + Math.sin(Date.now() * 0.008) * 0.2;
-                ctx.save();
-                ctx.globalAlpha = glowAlpha;
-                ctx.shadowColor = '#ff4444';
-                ctx.shadowBlur = 10;
-                const offsets = [[-2,0],[2,0],[0,-2],[0,2]];
-                for (let o = 0; o < offsets.length; o++) {
-                    ctx.drawImage(monoImg, mx + shX + offsets[o][0], my + shY + offsets[o][1], monolith.w, monolith.h);
-                }
-                ctx.shadowBlur = 0;
-                ctx.globalAlpha = 1;
-                ctx.restore();
-            }
             if (monoImg && monoImg.complete && monoImg.naturalWidth > 0) {
-                ctx.globalAlpha = monolith.flashTimer > 0 ? 0.5 : 1.0;
-                ctx.drawImage(monoImg, mx + shX, my + shY, monolith.w, monolith.h);
-                ctx.globalAlpha = 1;
-            } else {
-                ctx.fillStyle = monolith.flashTimer > 0 ? '#ffffff' : monolith.damageState === 0 ? '#607d8b' : monolith.damageState === 1 ? '#78909c' : '#90a4ae';
-                ctx.fillRect(mx + shX, my + shY, monolith.w, monolith.h);
-            }
-            // Damage cracks overlay
-            if (monolith.damageState >= 1) {
-                ctx.globalAlpha = 0.4;
-                ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 1; ctx.beginPath();
-                ctx.moveTo(mx + shX + 10, my + shY + 12); ctx.lineTo(mx + shX + 20, my + shY + 30); ctx.stroke();
-                if (monolith.damageState >= 2) {
-                    ctx.moveTo(mx + shX + 25, my + shY + 8); ctx.lineTo(mx + shX + 18, my + shY + 40); ctx.stroke();
+                // Glow outline: green when healthy, red when damaged
+                const hpPct = monolith.hp / monolith.maxHP;
+                if (hpPct >= 0.5) {
+                    // Green healthy glow
+                    const glowAlpha = 0.25 + Math.sin(Date.now() * 0.004) * 0.1;
+                    ctx.save();
+                    ctx.globalAlpha = glowAlpha;
+                    ctx.shadowColor = '#44ff66';
+                    ctx.shadowBlur = 8;
+                    const offsets = [[-2,0],[2,0],[0,-2],[0,2]];
+                    for (let o = 0; o < offsets.length; o++) {
+                        ctx.drawImage(monoImg, mx + shX + offsets[o][0], my + shY + offsets[o][1], monolith.w, monolith.h);
+                    }
+                    ctx.shadowBlur = 0;
+                    ctx.restore();
+                } else {
+                    // Red damage glow
+                    const glowAlpha = 0.3 + Math.sin(Date.now() * 0.008) * 0.2;
+                    ctx.save();
+                    ctx.globalAlpha = glowAlpha;
+                    ctx.shadowColor = '#ff4444';
+                    ctx.shadowBlur = 10;
+                    const offsets = [[-2,0],[2,0],[0,-2],[0,2]];
+                    for (let o = 0; o < offsets.length; o++) {
+                        ctx.drawImage(monoImg, mx + shX + offsets[o][0], my + shY + offsets[o][1], monolith.w, monolith.h);
+                    }
+                    ctx.shadowBlur = 0;
+                    ctx.restore();
                 }
+                // Draw monolith at full opacity always
                 ctx.globalAlpha = 1;
+                ctx.drawImage(monoImg, mx + shX, my + shY, monolith.w, monolith.h);
+            } else {
+                ctx.globalAlpha = 1;
+                ctx.fillStyle = monolith.damageState === 0 ? '#607d8b' : monolith.damageState === 1 ? '#78909c' : '#90a4ae';
+                ctx.fillRect(mx + shX, my + shY, monolith.w, monolith.h);
             }
         }
         // Deep Ones (face their travel direction)
@@ -3526,18 +3573,33 @@
             ctx.fillRect(leadX, py + shY, 2, p.h);
             ctx.globalAlpha = 1;
         });
-        // Enemy projectiles
+        // Enemy projectiles (bright red with pulsing glow)
         enemyProjectilePool.forEach((p) => {
             const px = worldToScreenX(p.x), py = worldToScreenY(p.y);
+            const cx = px + shX + p.w / 2;
+            const cy = py + shY + p.h / 2;
             const epImg = assets.enemy_projectile;
+            // Pulsing red glow behind
+            const pulse = 0.5 + Math.sin(Date.now() * 0.01 + p.x) * 0.2;
+            ctx.globalAlpha = pulse;
+            ctx.fillStyle = '#ff2200';
+            ctx.beginPath();
+            ctx.arc(cx, cy, p.w * 0.8, 0, Math.PI * 2);
+            ctx.fill();
             ctx.globalAlpha = 1;
+            // Draw projectile
             if (epImg && epImg.complete && epImg.naturalWidth > 0) {
                 ctx.drawImage(epImg, px + shX, py + shY, p.w, p.h);
             } else {
-                ctx.fillStyle = '#ff7043';
-                ctx.fillRect(px + shX, py + shY, p.w, p.h);
-                ctx.fillStyle = '#ffffff';
-                ctx.fillRect(px + shX + 1, py + shY + 1, p.w - 2, p.h - 2);
+                // Bright red-orange with white hot center
+                ctx.fillStyle = '#ff4400';
+                ctx.beginPath();
+                ctx.arc(cx, cy, p.w / 2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#ffcc00';
+                ctx.beginPath();
+                ctx.arc(cx, cy, p.w / 4, 0, Math.PI * 2);
+                ctx.fill();
             }
         });
         // Mines (Drifter bombs) — pulsing green glow
