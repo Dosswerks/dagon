@@ -1094,7 +1094,6 @@
             this.y += this.vy * dt;
             this.lifetime -= dt;
             this.alpha = Math.max(0, this.lifetime / this.maxLifetime);
-            this.scale = Math.max(0, this.lifetime / this.maxLifetime);
             if (this.lifetime <= 0) this.kill();
         }
     }
@@ -2141,8 +2140,25 @@
         state.lives--;
         resetCombo();
         state.damageVignetteTimer = TIMING.damageVignetteFrames;
-        triggerShake(TIMING.screenShakeIntensity);
-        spawnExplosion(player.x + player.w / 2, player.y + player.h / 2, '#ff3333', 24);
+        triggerShake(TIMING.screenShakeIntensity * 2);
+        // Large red death explosion with fast-moving particles
+        const deathX = player.x + player.w / 2;
+        const deathY = player.y + player.h / 2;
+        for (let i = 0; i < 30; i++) {
+            const angle = (Math.PI * 2 / 30) * i + (Math.random() - 0.5) * 0.5;
+            const speed = 2 + Math.random() * 4;
+            const p = particlePool.acquire(deathX, deathY,
+                Math.cos(angle) * speed,
+                Math.sin(angle) * speed
+            );
+            if (p) {
+                p.lifetime = 40 + Math.random() * 40;
+                p.maxLifetime = p.lifetime;
+                p.color = i % 3 === 0 ? '#ff6600' : i % 3 === 1 ? '#ff3333' : '#ffcc00';
+                p.alpha = 1;
+                p.scale = 2 + Math.random() * 2;
+            }
+        }
         player.alive = false;
         state.deathTimer = 120; // 2 seconds at 60fps
         playSound('playerDeath');
@@ -3217,17 +3233,16 @@
         playerProjectilePool.forEach((p) => {
             const px = worldToScreenX(p.x), py = worldToScreenY(p.y);
             const ppImg = assets.player_projectile;
-            // Golden glow behind projectile
-            ctx.save();
-            ctx.shadowColor = '#ffcc00';
-            ctx.shadowBlur = 6;
-            ctx.globalAlpha = 0.6;
-            ctx.fillStyle = '#ffcc00';
-            ctx.beginPath();
-            ctx.arc(px + shX + p.w / 2, py + shY + p.h / 2, p.w * 0.8, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
-            ctx.globalAlpha = 1;
+            const cx = px + shX + p.w / 2;
+            const cy = py + shY + p.h / 2;
+            // Hazy golden glow (radial gradient)
+            const glowRadius = p.w * 1.5;
+            const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowRadius);
+            glow.addColorStop(0, 'rgba(255, 204, 0, 0.4)');
+            glow.addColorStop(0.4, 'rgba(255, 180, 0, 0.15)');
+            glow.addColorStop(1, 'rgba(255, 150, 0, 0)');
+            ctx.fillStyle = glow;
+            ctx.fillRect(cx - glowRadius, cy - glowRadius, glowRadius * 2, glowRadius * 2);
             // Draw trail (fading copies behind the projectile)
             const trailDir = p.vx > 0 ? -1 : 1;
             for (let t = 1; t <= 4; t++) {
@@ -3291,7 +3306,8 @@
         // Particles
         particlePool.forEach((p) => {
             ctx.globalAlpha = p.alpha; ctx.fillStyle = p.color;
-            ctx.fillRect(worldToScreenX(p.x) + shX, worldToScreenY(p.y) + shY, Math.max(1, 2 * p.scale), Math.max(1, 2 * p.scale));
+            const pSize = Math.max(1, p.scale * (0.5 + p.alpha * 0.5));
+            ctx.fillRect(worldToScreenX(p.x) + shX, worldToScreenY(p.y) + shY, pSize, pSize);
         });
         ctx.globalAlpha = 1;
         // Off-screen indicators
