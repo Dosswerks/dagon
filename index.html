@@ -184,26 +184,74 @@
             .catch(() => { /* file not found or decode error — silent */ });
     }
 
+    // Per-sound volume multipliers
+    const SOUND_VOLUMES = {
+        playerFire: 1.0,
+        playerDeath: 1.5,
+        enemyDeath: 0.5,
+        mineDetonate: 1.5,
+        minePlacement: 0.5,
+        levelComplete: 2.25,
+        levelBegin: 1.25,
+        gameOver: 1.25,
+        deepOneRescued: 1.5,
+        deepOneAbducted: 1.5,
+        monolithAttack: 2.0,
+        ambient: 1.25,
+        music: 2.25,
+    };
+
     /** Play a one-shot sound effect. */
     function playSound(key) {
         if (!audioCtx || !audioBuffers[key] || state.muted) return;
         try {
             const source = audioCtx.createBufferSource();
             source.buffer = audioBuffers[key];
-            source.connect(sfxGain);
+            const vol = SOUND_VOLUMES[key] || 1.0;
+            if (vol !== 1.0) {
+                const gainNode = audioCtx.createGain();
+                gainNode.gain.value = vol;
+                gainNode.connect(sfxGain);
+                source.connect(gainNode);
+            } else {
+                source.connect(sfxGain);
+            }
             source.start(0);
         } catch (e) { /* silent */ }
     }
 
     /** Start a looping sound (music or ambient). */
+    /** Start a looping sound (music or ambient). Retries if buffer not loaded yet. */
     function startLoop(key, gainNode) {
-        if (!audioCtx || !audioBuffers[key]) return;
+        if (!audioCtx) return;
+        if (!audioBuffers[key]) {
+            // Buffer not loaded yet — retry after a short delay
+            let retries = 0;
+            const retryInterval = setInterval(() => {
+                retries++;
+                if (audioBuffers[key]) {
+                    clearInterval(retryInterval);
+                    startLoop(key, gainNode);
+                } else if (retries > 30) { // give up after ~3 seconds
+                    clearInterval(retryInterval);
+                }
+            }, 100);
+            return;
+        }
         stopLoop(key); // stop existing if playing
         try {
             const source = audioCtx.createBufferSource();
             source.buffer = audioBuffers[key];
             source.loop = true;
-            source.connect(gainNode || musicGain);
+            const vol = SOUND_VOLUMES[key] || 1.0;
+            if (vol !== 1.0) {
+                const volNode = audioCtx.createGain();
+                volNode.gain.value = vol;
+                volNode.connect(gainNode || musicGain);
+                source.connect(volNode);
+            } else {
+                source.connect(gainNode || musicGain);
+            }
             source.start(0);
             activeLoops[key] = source;
         } catch (e) { /* silent */ }
@@ -1196,6 +1244,10 @@
             this.beingAbducted = true;
             this.carriedBy = abductor || null;
             playSound('deepOneAbducted');
+            // Only show alert if monolith alert isn't active
+            if (state.monolithAlertTimer <= 0) {
+                state.deepOneAlertTimer = 120;
+            }
         }
         release() {
             this.state = 'DARTING_AWAY';
@@ -1247,15 +1299,22 @@
             super(x, y, ENEMY_CFG.abductor);
             this.type = 'abductor';
             this.speedMultiplier = speedMultiplier || 1;
-            this.state = 'SEEKING';
+            this.state = 'DRIFTING';    // start drifting, not seeking
             this.target = null;         // reference to targeted DeepOne
             this.grabTimer = 0;         // frames spent in GRABBING state
             this.shouldMutate = false;  // flag for game code to create Mutant
             // Drifting state
             this.driftAngle = rng() * Math.PI * 2;
             this.driftTimer = 0;
+            this.seekDelay = 300;       // ~5 seconds before seeking (300 frames at 60fps)
         }
         update(dt, deepOnes, monolith, player) {
+            // Delay before first seek
+            if (this.seekDelay > 0) {
+                this.seekDelay -= dt;
+                // Stay in DRIFTING until delay expires
+                if (this.state === 'SEEKING') this.state = 'DRIFTING';
+            }
             switch (this.state) {
                 case 'SEEKING': {
                     if (!this.target || !this.target.alive || this.target.beingAbducted) {
@@ -1336,8 +1395,8 @@
                     this.x = wrapPosition(this.x, WORLD_W);
                     // Slowly rotate drift angle
                     this.driftAngle += 0.01 * dt;
-                    // Check if a Deep One becomes available
-                    if (deepOnes && deepOnes.some(d => d.alive && !d.targeted && !d.beingAbducted)) {
+                    // Check if a Deep One becomes available (only after seek delay)
+                    if (this.seekDelay <= 0 && deepOnes && deepOnes.some(d => d.alive && !d.targeted && !d.beingAbducted)) {
                         this.state = 'SEEKING';
                     }
                     break;
@@ -1420,7 +1479,10 @@
                             if (attackingCrabCount < THREAT_CFG.maxCrabsAttacking) {
                                 this.state = 'ATTACKING';
                                 playSound('monolithAttack');
-                                state.monolithAlertTimer = 120; // show alert for ~2 seconds
+                                // Only show alert if deep one alert isn't active
+                                if (state.deepOneAlertTimer <= 0) {
+                                    state.monolithAlertTimer = 120;
+                                }
                             } else {
                                 this.state = 'QUEUED';
                             }
@@ -1645,7 +1707,7 @@
 
     // Valid state transitions map
     const VALID_TRANSITIONS = {
-        'START_SCREEN':     ['PLAYING'],
+        'START_SCREEN':     ['PLAYING', 'LEVEL_TRANSITION'],
         'PLAYING':          ['PAUSED', 'DEATH_PAUSE', 'LEVEL_TRANSITION', 'GAME_OVER'],
         'PAUSED':           ['PLAYING'],
         'DEATH_PAUSE':      ['PLAYING', 'GAME_OVER'],
@@ -1677,6 +1739,11 @@
         damageVignetteTimer: 0,
         bombFlashTimer: 0,
         monolithAlertTimer: 0,
+        deepOneAlertTimer: 0,
+        levelAnnounce: false,      // true = showing "LEVEL X" start, false = showing completion
+        attractMode: false,
+        attractTimer: 480,         // ~8 seconds before demo starts
+        attractPhase: 'title',     // 'title' or 'demo'
         muted: false,
         volumes: { ...AUDIO_CFG.defaultVolumes },
         nextExtraLifeScore: SCORE_CFG.extraLifeInterval,
@@ -2446,8 +2513,8 @@
         if (!player || !player.alive) return;
         const sx = worldToScreenX(player.x);
         const sy = worldToScreenY(player.y);
-        // Invincibility flash
-        if (player.invincibilityTimer > 0 && Math.floor(player.invincibilityTimer) % 4 < 2) {
+        // Invincibility flash (suppressed during attract mode)
+        if (player.invincibilityTimer > 0 && !state.attractMode && Math.floor(player.invincibilityTimer) % 4 < 2) {
             ctx.globalAlpha = 0.4;
         }
         // Dash trail
@@ -2518,6 +2585,127 @@
         ctx.globalAlpha = 1.0;
     }
 
+    // ── Attract Mode AI ────────────────────────────────────────
+
+    /**
+     * AI-driven demo player. Chases nearest enemy, fires periodically,
+     * dodges nearby projectiles. Player is invincible during attract.
+     */
+    function attractAI(dt) {
+        if (!player || !player.alive) return;
+
+        // Make player invincible during demo
+        player.invincibilityTimer = 999;
+
+        // Find nearest enemy
+        let nearestEnemy = null;
+        let nearestDist = Infinity;
+        for (let i = 0; i < enemies.length; i++) {
+            const e = enemies[i];
+            if (!e.alive) continue;
+            let dx = e.x - player.x;
+            if (dx > WORLD_W / 2) dx -= WORLD_W;
+            if (dx < -WORLD_W / 2) dx += WORLD_W;
+            const dy = e.y - player.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < nearestDist) {
+                nearestDist = dist;
+                nearestEnemy = e;
+            }
+        }
+
+        // Build fake input for player
+        const aiInput = { left: false, right: false, up: false, down: false, fire: false, dash: false, bomb: false, fireBuffered: false };
+
+        if (nearestEnemy) {
+            let dx = nearestEnemy.x - player.x;
+            if (dx > WORLD_W / 2) dx -= WORLD_W;
+            if (dx < -WORLD_W / 2) dx += WORLD_W;
+            const dy = nearestEnemy.y - player.y;
+
+            // Move toward enemy
+            if (dx > 20) aiInput.right = true;
+            else if (dx < -20) aiInput.left = true;
+            if (dy > 10) aiInput.down = true;
+            else if (dy < -10) aiInput.up = true;
+
+            // Fire when roughly aligned
+            if (Math.abs(dy) < 30 && Math.abs(dx) < 300) {
+                aiInput.fire = true;
+                aiInput.fireBuffered = true;
+            }
+        } else {
+            // No enemies — drift right
+            aiInput.right = true;
+        }
+
+        // Dodge nearby enemy projectiles
+        enemyProjectilePool.forEach((p) => {
+            const pdx = p.x - player.x;
+            const pdy = p.y - player.y;
+            if (Math.abs(pdx) < 40 && Math.abs(pdy) < 40) {
+                // Dodge vertically away from projectile
+                if (pdy > 0) aiInput.up = true;
+                else aiInput.down = true;
+            }
+        });
+
+        // Update player with AI input
+        player.update(dt, aiInput);
+        if (aiInput.fire || aiInput.fireBuffered) {
+            player.fire(playerProjectilePool);
+        }
+
+        // Update camera
+        updateCamera(dt);
+
+        // Update enemies
+        const attackingCrabCount = enemies.filter(e => e.alive && e.type === 'crab' && e.state === 'ATTACKING').length;
+        for (let i = 0; i < enemies.length; i++) {
+            const e = enemies[i];
+            if (!e.alive) continue;
+            switch (e.type) {
+                case 'abductor': e.update(dt, deepOnes, monolith, player); break;
+                case 'crab': e.update(dt, monolith, attackingCrabCount); break;
+                case 'pursuer': if (player) e.update(dt, player.x, player.y); break;
+                case 'drifter': e.update(dt); break;
+                case 'mutant': if (player) e.update(dt, player.x, player.y); break;
+            }
+        }
+
+        // Update Deep Ones
+        const enemiesCleared = enemies.filter(e => e.alive).length === 0;
+        for (let i = 0; i < deepOnes.length; i++) {
+            if (deepOnes[i].alive) deepOnes[i].update(dt, monolith, enemiesCleared);
+        }
+
+        // Update projectiles
+        playerProjectilePool.forEach((p) => { p.update(dt); if (!p.alive) playerProjectilePool.release(p); });
+        enemyProjectilePool.forEach((p) => { p.update(dt); if (!p.alive) enemyProjectilePool.release(p); });
+        particlePool.forEach((p) => { p.update(dt); if (!p.alive) particlePool.release(p); });
+
+        // Collisions (player projectiles vs enemies only — player is invincible)
+        playerProjectilePool.forEach((proj) => {
+            if (!proj.alive) return;
+            for (let i = 0; i < enemies.length; i++) {
+                const e = enemies[i];
+                if (!e.alive) continue;
+                if (aabb(proj.getHitbox(), e.getHitbox())) {
+                    proj.kill();
+                    playerProjectilePool.release(proj);
+                    spawnExplosion(e.x + e.w / 2, e.y + e.h / 2, '#44ff66', 30);
+                    e.kill();
+                    break;
+                }
+            }
+        });
+
+        // Cleanup dead entities
+        for (let i = enemies.length - 1; i >= 0; i--) {
+            if (!enemies[i].alive) enemies.splice(i, 1);
+        }
+    }
+
     // ── Game Loop ───────────────────────────────────────────────
 
     /**
@@ -2527,9 +2715,51 @@
     function update(dt) {
         switch (state.mode) {
             case 'START_SCREEN':
-                // Only check for start input
+                // Attract mode: count down, then start demo
+                if (!state.attractMode) {
+                    state.attractTimer -= dt;
+                    if (state.attractTimer <= 0) {
+                        // Start attract demo
+                        state.attractMode = true;
+                        state.attractPhase = 'demo';
+                        state.attractTimer = 900; // ~15 seconds of demo
+                        generateBackground();
+                        initLevel(1);
+                        player.alive = true;
+                    }
+                } else {
+                    // Running attract demo
+                    state.attractTimer -= dt;
+                    if (state.attractTimer <= 0) {
+                        // Demo over, return to title
+                        state.attractMode = false;
+                        state.attractPhase = 'title';
+                        state.attractTimer = 480;
+                        enemies = [];
+                        deepOnes = [];
+                        mines = [];
+                        tentacles = [];
+                        player = null;
+                    } else {
+                        // AI-driven demo gameplay
+                        attractAI(dt);
+                    }
+                }
+
+                // Any real input breaks attract and/or starts game
                 if (input.fire || input.bomb || input.dash) {
-                    initAudio(); // Initialize Web Audio on first user interaction
+                    if (state.attractMode) {
+                        // Break out of demo back to title
+                        state.attractMode = false;
+                        state.attractPhase = 'title';
+                        state.attractTimer = 480;
+                        enemies = [];
+                        deepOnes = [];
+                        mines = [];
+                        tentacles = [];
+                        player = null;
+                    }
+                    initAudio();
                     state.score = 0;
                     state.level = 1;
                     state.lives = PLAYER_CFG.startLives;
@@ -2540,6 +2770,9 @@
                     state.nextExtraLifeScore = SCORE_CFG.extraLifeInterval;
                     state.damageVignetteTimer = 0;
                     state.bombFlashTimer = 0;
+                    state.monolithAlertTimer = 0;
+                    state.deepOneAlertTimer = 0;
+                    state.attractMode = false;
                     state.stats.levelsCompleted = 0;
                     state.stats.enemiesDestroyed = 0;
                     state.stats.deepOnesSaved = 0;
@@ -2555,7 +2788,10 @@
                     playSound('levelBegin');
                     startLoop('music', musicGain);
                     startLoop('ambient', ambientGain);
-                    setState('PLAYING');
+                    // Show level announcement
+                    state.levelAnnounce = true;
+                    state.transitionTimer = 150; // ~2.5 seconds
+                    state.mode = 'LEVEL_TRANSITION';
                 }
                 break;
 
@@ -2716,6 +2952,7 @@
                 if (state.damageVignetteTimer > 0) state.damageVignetteTimer -= dt;
                 if (state.bombFlashTimer > 0) state.bombFlashTimer -= dt;
                 if (state.monolithAlertTimer > 0) state.monolithAlertTimer -= dt;
+                if (state.deepOneAlertTimer > 0) state.deepOneAlertTimer -= dt;
 
                 // Check Monolith destruction
                 if (monolith && monolith.hp <= 0) {
@@ -2739,6 +2976,7 @@
                     state.score += bonus;
                     state.transitionTimer = TIMING.levelTransitionFrames;
                     state.bombFlashTimer = 0; // clear bomb flash overlay
+                    state.levelAnnounce = false; // show completion screen
                     playSound('levelComplete');
                     setState('LEVEL_TRANSITION');
                 }
@@ -2802,18 +3040,27 @@
 
             case 'LEVEL_TRANSITION':
                 state.transitionTimer -= dt;
-                if (state.transitionTimer < TIMING.levelTransitionFrames - 30) {
+                if (state.transitionTimer < (state.levelAnnounce ? 90 : TIMING.levelTransitionFrames - 30)) {
                     if (input.fire || input.bomb || input.dash) {
                         state.transitionTimer = 0;
                     }
                 }
                 if (state.transitionTimer <= 0) {
-                    state.level++;
-                    state.stats.levelsCompleted++;
-                    state.bombs = Math.min(state.bombs + BOMB_CFG.earnPerLevel, BOMB_CFG.maxCount);
-                    initLevel(state.level);
-                    playSound('levelBegin');
-                    setState('PLAYING');
+                    if (state.levelAnnounce) {
+                        // Level announcement done — start playing
+                        state.levelAnnounce = false;
+                        setState('PLAYING');
+                    } else {
+                        // Level complete — advance to next
+                        state.level++;
+                        state.stats.levelsCompleted++;
+                        state.bombs = Math.min(state.bombs + BOMB_CFG.earnPerLevel, BOMB_CFG.maxCount);
+                        initLevel(state.level);
+                        playSound('levelBegin');
+                        // Show level announcement for next level
+                        state.levelAnnounce = true;
+                        state.transitionTimer = 150;
+                    }
                 }
                 break;
 
@@ -2854,6 +3101,9 @@
                 // Q key — return to title screen
                 if (input.quit) {
                     stopAllLoops();
+                    state.attractMode = false;
+                    state.attractPhase = 'title';
+                    state.attractTimer = 480;
                     state.mode = 'START_SCREEN';
                 }
                 break;
@@ -2866,7 +3116,18 @@
         ctx.fillStyle = '#050a14';
         ctx.fillRect(0, 0, W, H);
         switch (state.mode) {
-            case 'START_SCREEN': renderStartScreen(); break;
+            case 'START_SCREEN':
+                if (state.attractMode && state.attractPhase === 'demo') {
+                    renderGameplay();
+                    // Overlay prompt
+                    const blink = Math.floor(Date.now() / 500) % 2 === 0;
+                    if (blink) {
+                        drawTextCenter('PRESS FIRE TO START', H / 2 + 90, '#ffeb3b');
+                    }
+                } else {
+                    renderStartScreen();
+                }
+                break;
             case 'PLAYING': case 'DEATH_PAUSE': renderGameplay(); break;
             case 'PAUSED': renderGameplay(); renderPauseOverlay(); break;
             case 'LEVEL_TRANSITION': renderGameplay(); renderLevelTransition(); break;
@@ -3310,22 +3571,6 @@
             ctx.fillRect(worldToScreenX(p.x) + shX, worldToScreenY(p.y) + shY, pSize, pSize);
         });
         ctx.globalAlpha = 1;
-        // Off-screen indicators
-        if (player && player.alive) {
-            if (monolith && monolith.alive && enemies.some(e => e.alive && e.type === 'crab' && e.state === 'ATTACKING') && !isInViewport(monolith.x, monolith.w, camera.x, W, WORLD_W)) {
-                const dir = worldToScreenX(monolith.x) < 0 ? 0 : W - 10;
-                ctx.fillStyle = Math.floor(Date.now() / 300) % 2 === 0 ? '#ff4444' : '#ff8888';
-                ctx.fillRect(dir, H / 2 - 6, 8, 12);
-            }
-            for (let i = 0; i < deepOnes.length; i++) {
-                const d = deepOnes[i]; if (!d.alive || !d.beingAbducted) continue;
-                if (!isInViewport(d.x, d.w, camera.x, W, WORLD_W)) {
-                    const dir = worldToScreenX(d.x) < 0 ? 0 : W - 8;
-                    ctx.fillStyle = Math.floor(Date.now() / 250) % 2 === 0 ? '#ffeb3b' : '#ffc107';
-                    ctx.fillRect(dir, H / 3 - 4, 6, 8);
-                }
-            }
-        }
         // Damage vignette
         if (state.damageVignetteTimer > 0) {
             const va = Math.min(0.4, state.damageVignetteTimer / TIMING.damageVignetteFrames * 0.4);
@@ -3337,14 +3582,38 @@
             ctx.fillStyle = 'rgba(255, 255, 255, ' + Math.min(0.5, state.bombFlashTimer / TIMING.bombFlashFrames * 0.5) + ')';
             ctx.fillRect(0, 0, W, H);
         }
-        // Monolith attacked alert
-        if (state.monolithAlertTimer > 0) {
-            const alertAlpha = Math.min(1, state.monolithAlertTimer / 30); // fade out in last 0.5s
+        // Monolith / Deep One alerts
+        if (state.monolithAlertTimer > 0 || state.deepOneAlertTimer > 0) {
             const blink = Math.floor(Date.now() / 300) % 2 === 0;
-            if (blink) {
-                ctx.globalAlpha = alertAlpha * 0.8;
-                drawTextCenter('MONOLITH ATTACKED', H / 2 - 40, '#ff4444');
-                ctx.globalAlpha = 1;
+            if (state.monolithAlertTimer > 0 && state.deepOneAlertTimer > 0) {
+                // Both active — alternate between them
+                const altBlink = Math.floor(Date.now() / 600) % 2 === 0;
+                if (blink) {
+                    if (altBlink) {
+                        const alertAlpha = Math.min(1, state.monolithAlertTimer / 30);
+                        ctx.globalAlpha = alertAlpha * 0.8;
+                        drawTextCenter('MONOLITH ATTACKED', H / 2 - 40, '#ff4444');
+                    } else {
+                        const alertAlpha = Math.min(1, state.deepOneAlertTimer / 30);
+                        ctx.globalAlpha = alertAlpha * 0.8;
+                        drawTextCenter('DEEP ONE ABDUCTED', H / 2 - 40, '#4fc3f7');
+                    }
+                    ctx.globalAlpha = 1;
+                }
+            } else if (state.monolithAlertTimer > 0) {
+                const alertAlpha = Math.min(1, state.monolithAlertTimer / 30);
+                if (blink) {
+                    ctx.globalAlpha = alertAlpha * 0.8;
+                    drawTextCenter('MONOLITH ATTACKED', H / 2 - 40, '#ff4444');
+                    ctx.globalAlpha = 1;
+                }
+            } else {
+                const alertAlpha = Math.min(1, state.deepOneAlertTimer / 30);
+                if (blink) {
+                    ctx.globalAlpha = alertAlpha * 0.8;
+                    drawTextCenter('DEEP ONE ABDUCTED', H / 2 - 40, '#4fc3f7');
+                    ctx.globalAlpha = 1;
+                }
             }
         }
         // HUD
@@ -3417,10 +3686,20 @@
 
     function renderLevelTransition() {
         ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'; ctx.fillRect(0, 0, W, H);
-        drawTextLarge('LEVEL ' + state.level + ' COMPLETE', H / 2 - 40, '#4fc3f7');
-        drawTextCenter('DEEP ONES SAVED: ' + state.deepOnesRemaining + '/' + DEEP_ONE_CFG.count, H / 2 - 10, '#80cbc4');
-        if (monolith) drawTextCenter('MONOLITH: ' + Math.round(monolith.hp / monolith.maxHP * 100) + '%', H / 2 + 4, '#80cbc4');
-        drawTextCenter('PRESS FIRE TO CONTINUE', H / 2 + 28, '#b0bec5');
+        if (state.levelAnnounce) {
+            // Level start announcement
+            drawTextLarge('LEVEL ' + state.level, H / 2 - 20, '#4fc3f7');
+            const pulse = Math.sin(Date.now() * 0.004) * 0.3 + 0.7;
+            ctx.globalAlpha = pulse;
+            drawTextCenter('GET READY', H / 2 + 20, '#ffeb3b');
+            ctx.globalAlpha = 1;
+        } else {
+            // Level complete summary
+            drawTextLarge('LEVEL ' + state.level + ' COMPLETE', H / 2 - 40, '#4fc3f7');
+            drawTextCenter('DEEP ONES SAVED: ' + state.deepOnesRemaining + '/' + DEEP_ONE_CFG.count, H / 2 - 10, '#80cbc4');
+            if (monolith) drawTextCenter('MONOLITH: ' + Math.round(monolith.hp / monolith.maxHP * 100) + '%', H / 2 + 4, '#80cbc4');
+            drawTextCenter('PRESS FIRE TO CONTINUE', H / 2 + 28, '#b0bec5');
+        }
     }
 
     function renderGameOver() {
