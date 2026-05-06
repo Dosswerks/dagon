@@ -330,7 +330,7 @@
         crab: {
             w: 50, h: 27,
             speed: 0.8,
-            damagePerFrame: 0.15,  // damage to Monolith per frame while in contact
+            damagePerFrame: 0.08,  // damage to Monolith per frame while in contact
             points: 100,
             hb: { x: 4, y: 2, w: 42, h: 23 },
             animFrames: 2,
@@ -1421,6 +1421,7 @@
                             if (attackingCrabCount < THREAT_CFG.maxCrabsAttacking) {
                                 this.state = 'ATTACKING';
                                 playSound('monolithAttack');
+                                state.monolithAlertTimer = 120; // show alert for ~2 seconds
                             } else {
                                 this.state = 'QUEUED';
                             }
@@ -1676,6 +1677,7 @@
         summaryTimer: 0,
         damageVignetteTimer: 0,
         bombFlashTimer: 0,
+        monolithAlertTimer: 0,
         muted: false,
         volumes: { ...AUDIO_CFG.defaultVolumes },
         nextExtraLifeScore: SCORE_CFG.extraLifeInterval,
@@ -2128,7 +2130,7 @@
         const cfg = ENEMY_CFG[enemy.type];
         if (cfg) awardPoints(cfg.points);
         state.stats.enemiesDestroyed++;
-        spawnExplosion(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, '#44ff66', 16);
+        spawnExplosion(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, '#44ff66', 30);
         playSound('enemyDeath');
         enemy.kill();
     }
@@ -2140,9 +2142,9 @@
         resetCombo();
         state.damageVignetteTimer = TIMING.damageVignetteFrames;
         triggerShake(TIMING.screenShakeIntensity);
-        spawnExplosion(player.x + player.w / 2, player.y + player.h / 2, '#4fc3f7', 12);
+        spawnExplosion(player.x + player.w / 2, player.y + player.h / 2, '#ff3333', 24);
         player.alive = false;
-        state.deathTimer = TIMING.deathPauseFrames;
+        state.deathTimer = 120; // 2 seconds at 60fps
         playSound('playerDeath');
         setState('DEATH_PAUSE');
     }
@@ -2697,6 +2699,7 @@
                 // Effect timers
                 if (state.damageVignetteTimer > 0) state.damageVignetteTimer -= dt;
                 if (state.bombFlashTimer > 0) state.bombFlashTimer -= dt;
+                if (state.monolithAlertTimer > 0) state.monolithAlertTimer -= dt;
 
                 // Check Monolith destruction
                 if (monolith && monolith.hp <= 0) {
@@ -2719,6 +2722,7 @@
                     );
                     state.score += bonus;
                     state.transitionTimer = TIMING.levelTransitionFrames;
+                    state.bombFlashTimer = 0; // clear bomb flash overlay
                     playSound('levelComplete');
                     setState('LEVEL_TRANSITION');
                 }
@@ -2742,6 +2746,12 @@
                 break;
 
             case 'DEATH_PAUSE':
+                // Update particles so death explosion is visible
+                particlePool.forEach((p) => {
+                    p.update(dt);
+                    if (!p.alive) particlePool.release(p);
+                });
+
                 // Count down death timer, then respawn or game over
                 state.deathTimer -= dt;
                 if (state.deathTimer <= 0) {
@@ -3203,15 +3213,26 @@
         for (let i = 0; i < enemies.length; i++) { const e = enemies[i]; if (e.alive) drawEnemy(e, eColors[e.type] || '#ef5350'); }
         // Player
         drawPlayer();
-        // Player projectiles (with trail effect like Defender)
+        // Player projectiles (with trail effect and golden glow)
         playerProjectilePool.forEach((p) => {
             const px = worldToScreenX(p.x), py = worldToScreenY(p.y);
             const ppImg = assets.player_projectile;
+            // Golden glow behind projectile
+            ctx.save();
+            ctx.shadowColor = '#ffcc00';
+            ctx.shadowBlur = 6;
+            ctx.globalAlpha = 0.6;
+            ctx.fillStyle = '#ffcc00';
+            ctx.beginPath();
+            ctx.arc(px + shX + p.w / 2, py + shY + p.h / 2, p.w * 0.8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            ctx.globalAlpha = 1;
             // Draw trail (fading copies behind the projectile)
             const trailDir = p.vx > 0 ? -1 : 1;
             for (let t = 1; t <= 4; t++) {
                 ctx.globalAlpha = 0.3 / t;
-                ctx.fillStyle = '#4fc3f7';
+                ctx.fillStyle = '#ffd54f';
                 ctx.fillRect(px + shX + trailDir * t * 6, py + shY + 1, p.w - 2, p.h - 2);
             }
             ctx.globalAlpha = 1;
@@ -3222,8 +3243,8 @@
                 ctx.fillStyle = '#fff176';
                 ctx.fillRect(px + shX, py + shY, p.w, p.h);
             }
-            // Bright leading edge glow
-            ctx.globalAlpha = 0.5;
+            // Bright leading edge
+            ctx.globalAlpha = 0.6;
             ctx.fillStyle = '#ffffff';
             const leadX = p.vx > 0 ? px + shX + p.w - 2 : px + shX;
             ctx.fillRect(leadX, py + shY, 2, p.h);
@@ -3233,11 +3254,14 @@
         enemyProjectilePool.forEach((p) => {
             const px = worldToScreenX(p.x), py = worldToScreenY(p.y);
             const epImg = assets.enemy_projectile;
+            ctx.globalAlpha = 1;
             if (epImg && epImg.complete && epImg.naturalWidth > 0) {
                 ctx.drawImage(epImg, px + shX, py + shY, p.w, p.h);
             } else {
-                ctx.globalAlpha = 0.4; ctx.fillStyle = '#ff5722'; ctx.fillRect(px + shX - 1, py + shY - 1, p.w + 2, p.h + 2);
-                ctx.globalAlpha = 1; ctx.fillStyle = '#ff7043'; ctx.fillRect(px + shX, py + shY, p.w, p.h);
+                ctx.fillStyle = '#ff7043';
+                ctx.fillRect(px + shX, py + shY, p.w, p.h);
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(px + shX + 1, py + shY + 1, p.w - 2, p.h - 2);
             }
         });
         // Mines (Drifter bombs) — pulsing green glow
@@ -3296,6 +3320,16 @@
         if (state.bombFlashTimer > 0) {
             ctx.fillStyle = 'rgba(255, 255, 255, ' + Math.min(0.5, state.bombFlashTimer / TIMING.bombFlashFrames * 0.5) + ')';
             ctx.fillRect(0, 0, W, H);
+        }
+        // Monolith attacked alert
+        if (state.monolithAlertTimer > 0) {
+            const alertAlpha = Math.min(1, state.monolithAlertTimer / 30); // fade out in last 0.5s
+            const blink = Math.floor(Date.now() / 300) % 2 === 0;
+            if (blink) {
+                ctx.globalAlpha = alertAlpha * 0.8;
+                drawTextCenter('MONOLITH ATTACKED', H / 2 - 40, '#ff4444');
+                ctx.globalAlpha = 1;
+            }
         }
         // HUD
         renderHUD();
