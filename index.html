@@ -50,10 +50,150 @@
             margin-top: 4px;
             text-align: center;
         }
+
+        /* Touch Controls */
+        #touch-controls {
+            display: none;
+            width: 100%;
+            padding: 8px 12px;
+            flex-shrink: 0;
+        }
+        #touch-controls .tc-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            max-width: 480px;
+            margin: 0 auto;
+        }
+        .tc-dpad {
+            display: grid;
+            grid-template-columns: 50px 50px 50px;
+            grid-template-rows: 50px 50px 50px;
+            gap: 2px;
+        }
+        .tc-btn {
+            width: 50px;
+            height: 50px;
+            background: rgba(26, 58, 42, 0.8);
+            border: 2px solid #2a5a3a;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #4fc3f7;
+            font-size: 18px;
+            font-family: monospace;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .tc-btn:active, .tc-btn.active {
+            background: rgba(42, 90, 58, 0.9);
+            border-color: #4fc3f7;
+        }
+        .tc-btn-empty { visibility: hidden; }
+        .tc-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            align-items: center;
+        }
+        .tc-action-btn {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            border: 2px solid #2a5a3a;
+            background: rgba(26, 58, 42, 0.8);
+            color: #4fc3f7;
+            font-size: 10px;
+            font-family: monospace;
+            font-weight: bold;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .tc-action-btn:active, .tc-action-btn.active {
+            background: rgba(42, 90, 58, 0.9);
+            border-color: #4fc3f7;
+        }
+        .tc-fire-btn {
+            width: 72px;
+            height: 72px;
+            background: rgba(80, 30, 30, 0.8);
+            border-color: #ff4444;
+            color: #ff6644;
+            font-size: 11px;
+        }
+        .tc-fire-btn:active, .tc-fire-btn.active {
+            background: rgba(120, 40, 40, 0.9);
+            border-color: #ff6644;
+        }
+        .tc-secondary {
+            display: flex;
+            gap: 8px;
+        }
+        .tc-small-btn {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: 2px solid #2a5a3a;
+            background: rgba(26, 58, 42, 0.8);
+            color: #4fc3f7;
+            font-size: 9px;
+            font-family: monospace;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .tc-small-btn:active, .tc-small-btn.active {
+            background: rgba(42, 90, 58, 0.9);
+            border-color: #4fc3f7;
+        }
+        .tc-instructions {
+            text-align: center;
+            color: #78909c;
+            font-size: 11px;
+            font-family: monospace;
+            padding: 4px 0;
+            display: none;
+        }
     </style>
 </head>
 <body>
     <canvas id="game"></canvas>
+    <div id="touch-instructions" class="tc-instructions">
+        D-PAD: Move &nbsp;|&nbsp; FIRE: Shoot &nbsp;|&nbsp; BOMB: Smart Bomb &nbsp;|&nbsp; DASH: Speed Burst
+    </div>
+    <div id="touch-controls">
+        <div class="tc-row">
+            <div class="tc-dpad">
+                <div class="tc-btn tc-btn-empty"></div>
+                <div class="tc-btn" data-dir="up">&#9650;</div>
+                <div class="tc-btn tc-btn-empty"></div>
+                <div class="tc-btn" data-dir="left">&#9664;</div>
+                <div class="tc-btn tc-btn-empty"></div>
+                <div class="tc-btn" data-dir="right">&#9654;</div>
+                <div class="tc-btn tc-btn-empty"></div>
+                <div class="tc-btn" data-dir="down">&#9660;</div>
+                <div class="tc-btn tc-btn-empty"></div>
+            </div>
+            <div class="tc-actions">
+                <div class="tc-action-btn tc-fire-btn" data-action="fire">FIRE</div>
+                <div class="tc-secondary">
+                    <div class="tc-small-btn" data-action="bomb">BOMB</div>
+                    <div class="tc-small-btn" data-action="dash">DASH</div>
+                </div>
+            </div>
+        </div>
+    </div>
     <div id="credits">
         Based on <a href="https://hplovecraft.com/writings/fiction/d.aspx" target="_blank"><em>Dagon</em></a> by H.P. Lovecraft.<br>
         A game by <a href="https://www.andrewdoss.com" target="_blank">Andrew Doss</a>.<br>
@@ -191,7 +331,7 @@
         enemyDeath: 0.5,
         mineDetonate: 1.5,
         minePlacement: 0.5,
-        levelComplete: 2.8,
+        levelComplete: 4.2,
         levelBegin: 1.25,
         gameOver: 1.25,
         deepOneRescued: 1.875,
@@ -289,12 +429,14 @@
         const vh = window.innerHeight;
         const dpr = window.devicePixelRatio || 1;
 
-        // Account for footer height
+        // Account for footer and touch controls height
         const creditsEl = document.getElementById('credits');
         const tipJarEl = document.querySelector('.tip-jar-section');
+        const touchEl = document.getElementById('touch-controls');
         let footerH = 0;
         if (creditsEl) footerH += creditsEl.offsetHeight || 0;
         if (tipJarEl) footerH += tipJarEl.offsetHeight || 0;
+        if (touchEl && touchEl.style.display !== 'none') footerH += touchEl.offsetHeight || 0;
 
         const availH = vh - footerH - 10;
 
@@ -1021,7 +1163,7 @@
             if (this.shotCooldownTimer <= 0 && projectilePool.count < PLAYER_CFG.maxBullets) {
                 const dir = this.facingRight ? 1 : -1;
                 const projX = this.facingRight ? this.x + this.w : this.x - 4;
-                const projY = this.y + this.h / 2 - 2;
+                const projY = this.y + this.h / 2 - 4;
                 projectilePool.acquire(projX, projY, PLAYER_CFG.shotSpeed * dir, 0);
                 this.shotCooldownTimer = PLAYER_CFG.shotCooldown;
                 this.fireBuffered = false;
@@ -1798,8 +1940,8 @@
 
     let enemyProjectilePool = new ObjectPool(
         () => new Projectile({
-            w: 12, h: 12,
-            hb: { x: 2, y: 2, w: 8, h: 8 },
+            w: 30, h: 30,
+            hb: { x: 6, y: 6, w: 18, h: 18 },
             maxLifetime: 120,
             animFrames: 1,
             animInterval: 1,
@@ -1884,16 +2026,17 @@
                 }
             }
 
-            // ── Merge all sources ──
-            this.left  = kbLeft  || gpLeft;
-            this.right = kbRight || gpRight;
-            this.up    = kbUp    || gpUp;
-            this.down  = kbDown  || gpDown;
+            // ── Merge all sources (keyboard + gamepad + touch) ──
+            const t = this._touch;
+            this.left  = kbLeft  || gpLeft  || t.left;
+            this.right = kbRight || gpRight || t.right;
+            this.up    = kbUp    || gpUp    || t.up;
+            this.down  = kbDown  || gpDown  || t.down;
 
             // For single-press actions, detect rising edge (pressed this frame, not last)
-            const rawFire  = kbFire  || gpFire;
-            const rawBomb  = kbBomb  || gpBomb;
-            const rawDash  = kbDash  || gpDash;
+            const rawFire  = kbFire  || gpFire  || t.fire;
+            const rawBomb  = kbBomb  || gpBomb  || t.bomb;
+            const rawDash  = kbDash  || gpDash  || t.dash;
             const rawPause = kbPause || gpPause;
             const rawMute  = kbMute;
             const rawQuit  = kbQuit;
@@ -1954,6 +2097,60 @@
                 if (this._gamepadIndex === e.gamepad.index) {
                     this._gamepadIndex = null;
                 }
+            });
+        },
+
+        // Touch state
+        _touch: { left: false, right: false, up: false, down: false, fire: false, bomb: false, dash: false },
+
+        /**
+         * Set up touch controls for mobile. Shows/hides based on viewport width.
+         */
+        initTouch() {
+            const controlsEl = document.getElementById('touch-controls');
+            const instructionsEl = document.getElementById('touch-instructions');
+            const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0 || window.innerWidth <= TOUCH_CFG.breakpoint;
+
+            if (isMobile && controlsEl) {
+                controlsEl.style.display = 'block';
+                if (instructionsEl) instructionsEl.style.display = 'block';
+            }
+
+            // D-pad buttons
+            const dirBtns = controlsEl ? controlsEl.querySelectorAll('[data-dir]') : [];
+            dirBtns.forEach((btn) => {
+                const dir = btn.getAttribute('data-dir');
+                const setActive = (active) => {
+                    this._touch[dir] = active;
+                    btn.classList.toggle('active', active);
+                };
+                btn.addEventListener('touchstart', (e) => { e.preventDefault(); setActive(true); });
+                btn.addEventListener('touchend', (e) => { e.preventDefault(); setActive(false); });
+                btn.addEventListener('touchcancel', (e) => { e.preventDefault(); setActive(false); });
+            });
+
+            // Action buttons
+            const actionBtns = controlsEl ? controlsEl.querySelectorAll('[data-action]') : [];
+            actionBtns.forEach((btn) => {
+                const action = btn.getAttribute('data-action');
+                const setActive = (active) => {
+                    this._touch[action] = active;
+                    btn.classList.toggle('active', active);
+                };
+                btn.addEventListener('touchstart', (e) => { e.preventDefault(); setActive(true); });
+                btn.addEventListener('touchend', (e) => { e.preventDefault(); setActive(false); });
+                btn.addEventListener('touchcancel', (e) => { e.preventDefault(); setActive(false); });
+            });
+
+            // Also allow tapping the canvas to fire (for start screen)
+            const canvas = document.getElementById('game');
+            canvas.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                this._touch.fire = true;
+            });
+            canvas.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                this._touch.fire = false;
             });
         },
     };
@@ -2886,8 +3083,11 @@
                                     const dy = player.y - e.y;
                                     const dist = Math.sqrt(dx * dx + dy * dy);
                                     if (dist > 0) {
+                                        // Spawn from front edge of sprite (toward player)
+                                        const spawnX = dx > 0 ? e.x + e.w : e.x - 30;
+                                        const spawnY = e.y + e.h / 2 - 15;
                                         enemyProjectilePool.acquire(
-                                            e.x + e.w / 2, e.y + e.h / 2,
+                                            spawnX, spawnY,
                                             (dx / dist) * ENEMY_PROJ_CFG.speed,
                                             (dy / dist) * ENEMY_PROJ_CFG.speed
                                         );
@@ -3573,25 +3773,25 @@
             ctx.fillRect(leadX, py + shY, 2, p.h);
             ctx.globalAlpha = 1;
         });
-        // Enemy projectiles (bright red with pulsing glow)
+        // Enemy projectiles
         enemyProjectilePool.forEach((p) => {
             const px = worldToScreenX(p.x), py = worldToScreenY(p.y);
-            const cx = px + shX + p.w / 2;
-            const cy = py + shY + p.h / 2;
             const epImg = assets.enemy_projectile;
-            // Pulsing red glow behind
-            const pulse = 0.5 + Math.sin(Date.now() * 0.01 + p.x) * 0.2;
-            ctx.globalAlpha = pulse;
-            ctx.fillStyle = '#ff2200';
-            ctx.beginPath();
-            ctx.arc(cx, cy, p.w * 0.8, 0, Math.PI * 2);
-            ctx.fill();
             ctx.globalAlpha = 1;
-            // Draw projectile
             if (epImg && epImg.complete && epImg.naturalWidth > 0) {
-                ctx.drawImage(epImg, px + shX, py + shY, p.w, p.h);
+                // Flip horizontally if moving left
+                if (p.vx < 0) {
+                    ctx.save();
+                    ctx.translate(px + shX + p.w, py + shY);
+                    ctx.scale(-1, 1);
+                    ctx.drawImage(epImg, 0, 0, p.w, p.h);
+                    ctx.restore();
+                } else {
+                    ctx.drawImage(epImg, px + shX, py + shY, p.w, p.h);
+                }
             } else {
-                // Bright red-orange with white hot center
+                const cx = px + shX + p.w / 2;
+                const cy = py + shY + p.h / 2;
                 ctx.fillStyle = '#ff4400';
                 ctx.beginPath();
                 ctx.arc(cx, cy, p.w / 2, 0, Math.PI * 2);
@@ -4005,6 +4205,7 @@
 
         input.initKeyboard();
         input.initGamepad();
+        input.initTouch();
 
         // Generate QR code for tip jar
         try {
