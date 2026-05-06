@@ -1,0 +1,3637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dagon — A Dosswerks Arcade Game</title>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+    <style>
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow-x: hidden;
+            overflow-y: auto;
+            background: #000;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+        }
+
+        canvas {
+            display: block;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            border: 2px solid #1a3a2a;
+        }
+
+        #credits {
+            width: 100%;
+            text-align: center;
+            color: #999;
+            font-size: 14px;
+            padding: 10px 8px 4px;
+            line-height: 1.3;
+            font-family: Georgia, 'Times New Roman', serif;
+            letter-spacing: 0.3px;
+        }
+        #credits a { color: #c8a832; text-decoration: none; }
+        #credits a:hover { color: #fff; text-decoration: underline; }
+        .tip-jar-section {
+            margin-top: 4px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="game"></canvas>
+    <div id="credits">
+        Based on <a href="https://hplovecraft.com/writings/fiction/d.aspx" target="_blank"><em>Dagon</em></a> by H.P. Lovecraft.<br>
+        A game by <a href="https://www.andrewdoss.com" target="_blank">Andrew Doss</a>.<br>
+        &copy; 2026 Andrew Doss. All Rights Reserved.<br>
+        <a href="story.html">Read the story</a>
+    </div>
+    <div class="tip-jar-section">
+        <p style="font-size:13px;color:#888;line-height:1.3;margin:0 0 12px;font-family:Georgia,'Times New Roman',serif;">Enjoying the game? Tips help keep the games coming!</p>
+        <div style="display:flex;align-items:center;justify-content:center;gap:20px;">
+            <form action="https://www.paypal.com/donate" method="post" target="_blank">
+                <input type="hidden" name="hosted_button_id" value="HDD77QKGC6XXN">
+                <button type="submit" style="padding:0;background:none;border:none;cursor:pointer;display:inline-flex;flex-direction:column;align-items:center;gap:4px;transition:transform 0.2s" onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="80" height="100" viewBox="0 0 80 100" fill="none">
+                        <rect x="16" y="8" width="48" height="8" rx="2" fill="#aaa"/>
+                        <rect x="34" y="2" width="12" height="8" rx="2" fill="#999"/>
+                        <rect x="36" y="4" width="8" height="3" rx="1" fill="#777"/>
+                        <path d="M18 16 L16 82 Q16 90 24 90 L56 90 Q64 90 64 82 L62 16 Z" fill="rgba(180,220,255,0.18)" stroke="rgba(200,230,255,0.5)" stroke-width="2"/>
+                        <path d="M22 20 L21 75" stroke="rgba(255,255,255,0.15)" stroke-width="3" stroke-linecap="round"/>
+                        <text x="40" y="38" text-anchor="middle" font-size="9" font-weight="bold" fill="rgba(255,255,255,0.7)" font-family="sans-serif" letter-spacing="1">TIP JAR</text>
+                        <g transform="rotate(-12 40 55)"><rect x="26" y="48" width="30" height="16" rx="2" fill="#3a7d44"/><text x="41" y="60" text-anchor="middle" font-size="12" font-weight="bold" fill="#6ec77a" font-family="serif">$</text></g>
+                        <g transform="rotate(8 40 60)"><rect x="24" y="54" width="30" height="16" rx="2" fill="#2e6b38"/><text x="39" y="66" text-anchor="middle" font-size="12" font-weight="bold" fill="#5cb868" font-family="serif">$</text></g>
+                        <g transform="rotate(-5 40 65)"><rect x="28" y="62" width="30" height="16" rx="2" fill="#357a3f"/><text x="43" y="74" text-anchor="middle" font-size="12" font-weight="bold" fill="#7dd48a" font-family="serif">$</text></g>
+                        <ellipse cx="30" cy="78" rx="6" ry="3" fill="#d4a017" stroke="#b8860b" stroke-width="1"/>
+                        <ellipse cx="42" cy="80" rx="5" ry="2.5" fill="#daa520" stroke="#b8860b" stroke-width="1"/>
+                        <ellipse cx="52" cy="77" rx="5" ry="3" fill="#c9960c" stroke="#a07608" stroke-width="1"/>
+                    </svg>
+                </button>
+            </form>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:4px;position:relative;top:-4px;">
+                <div id="qr-code" style="background:#fff;padding:4px;border-radius:4px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ── Canvas & Scaling ────────────────────────────────────────
+    const W = 480, H = 270;
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+
+    // ── Asset Loading ───────────────────────────────────────────
+    const assets = {};
+
+    function loadImage(key, src) {
+        const img = new Image();
+        img.src = src;
+        assets[key] = img;
+    }
+
+    loadImage('player_1', 'assets/player_1.png');
+    loadImage('player_2', 'assets/player_2.png');
+    loadImage('abductor_1', 'assets/abductor_1.png');
+    loadImage('abductor_2', 'assets/abductor_2.png');
+    loadImage('crab_1', 'assets/crab_1.png');
+    loadImage('crab_2', 'assets/crab_2.png');
+    loadImage('pursuer_1', 'assets/pursuer_1.png');
+    loadImage('pursuer_2', 'assets/pursuer_2.png');
+    loadImage('drifter_1', 'assets/drifter_1.png');
+    loadImage('drifter_2', 'assets/drifter_2.png');
+    loadImage('mutant_1', 'assets/mutant_1.png');
+    loadImage('mutant_2', 'assets/mutant_2.png');
+    loadImage('monolith', 'assets/monolith.png');
+    loadImage('deep_one', 'assets/deep-one.png');
+    loadImage('ground_house', 'assets/ground-house.png');
+    loadImage('ground_ruin', 'assets/ground-ruin.png');
+    loadImage('ground_coral', 'assets/ground-coral.png');
+    loadImage('ground_rock', 'assets/ground-rock.png');
+    loadImage('player_projectile', 'assets/player-projectile.png');
+    loadImage('enemy_projectile', 'assets/enemy-projectile.png');
+    loadImage('tentacle', 'assets/tentacle.png');
+    loadImage('background', 'assets/background.png');
+    loadImage('title_logo', 'assets/title-logo.png');
+    loadImage('title_bg', 'assets/title-bg.png');
+    loadImage('gameover_bg', 'assets/gameover-bg.png');
+
+    // ── Audio System ────────────────────────────────────────────
+
+    let audioCtx = null;
+    let masterGain = null;
+    let sfxGain = null;
+    let musicGain = null;
+    let ambientGain = null;
+    const audioBuffers = {};
+    const activeLoops = {}; // currently playing looping sources
+
+    /** Initialize Web Audio API on first user interaction. */
+    function initAudio() {
+        if (audioCtx) return;
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            masterGain = audioCtx.createGain();
+            masterGain.connect(audioCtx.destination);
+            sfxGain = audioCtx.createGain();
+            sfxGain.gain.value = AUDIO_CFG.defaultVolumes.sfx;
+            sfxGain.connect(masterGain);
+            musicGain = audioCtx.createGain();
+            musicGain.gain.value = AUDIO_CFG.defaultVolumes.music;
+            musicGain.connect(masterGain);
+            ambientGain = audioCtx.createGain();
+            ambientGain.gain.value = AUDIO_CFG.defaultVolumes.ambient;
+            ambientGain.connect(masterGain);
+            // Load all sound files
+            loadSound('playerFire', 'assets/player-fire.mp3');
+            loadSound('playerDeath', 'assets/player-death.mp3');
+            loadSound('enemyDeath', 'assets/enemy-death.mp3');
+            loadSound('mineDetonate', 'assets/mine-detonate.mp3');
+            loadSound('minePlacement', 'assets/mine-placement.mp3');
+            loadSound('levelComplete', 'assets/level-complete.mp3');
+            loadSound('levelBegin', 'assets/level-begin.mp3');
+            loadSound('gameOver', 'assets/game-over.mp3');
+            loadSound('deepOneRescued', 'assets/deep-one-rescued.mp3');
+            loadSound('deepOneAbducted', 'assets/deep-one-abducted.mp3');
+            loadSound('monolithAttack', 'assets/monolith-attack.mp3');
+            loadSound('ambient', 'assets/ambient-underwater.mp3');
+            loadSound('music', 'assets/music.mp3');
+        } catch (e) {
+            // Web Audio not available — silent fail
+        }
+    }
+
+    /** Load an audio file into a buffer. */
+    function loadSound(key, url) {
+        if (!audioCtx) return;
+        fetch(url)
+            .then(r => r.arrayBuffer())
+            .then(buf => audioCtx.decodeAudioData(buf))
+            .then(decoded => { audioBuffers[key] = decoded; })
+            .catch(() => { /* file not found or decode error — silent */ });
+    }
+
+    /** Play a one-shot sound effect. */
+    function playSound(key) {
+        if (!audioCtx || !audioBuffers[key] || state.muted) return;
+        try {
+            const source = audioCtx.createBufferSource();
+            source.buffer = audioBuffers[key];
+            source.connect(sfxGain);
+            source.start(0);
+        } catch (e) { /* silent */ }
+    }
+
+    /** Start a looping sound (music or ambient). */
+    function startLoop(key, gainNode) {
+        if (!audioCtx || !audioBuffers[key]) return;
+        stopLoop(key); // stop existing if playing
+        try {
+            const source = audioCtx.createBufferSource();
+            source.buffer = audioBuffers[key];
+            source.loop = true;
+            source.connect(gainNode || musicGain);
+            source.start(0);
+            activeLoops[key] = source;
+        } catch (e) { /* silent */ }
+    }
+
+    /** Stop a looping sound. */
+    function stopLoop(key) {
+        if (activeLoops[key]) {
+            try { activeLoops[key].stop(); } catch (e) { /* silent */ }
+            delete activeLoops[key];
+        }
+    }
+
+    /** Stop all loops. */
+    function stopAllLoops() {
+        for (const key in activeLoops) stopLoop(key);
+    }
+
+    /** Update master mute state. */
+    function updateMute() {
+        if (masterGain) {
+            masterGain.gain.value = state.muted ? 0 : 1;
+        }
+    }
+
+    /**
+     * Resize the canvas element to fit the window while maintaining
+     * the native 480×270 aspect ratio. Uses integer scaling for
+     * pixel-perfect rendering. Accounts for devicePixelRatio (Retina)
+     * by scaling the canvas backing store to match physical pixels,
+     * preventing the browser from applying bilinear upscaling.
+     */
+    function resizeCanvas() {
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const dpr = window.devicePixelRatio || 1;
+
+        // Account for footer height
+        const creditsEl = document.getElementById('credits');
+        const tipJarEl = document.querySelector('.tip-jar-section');
+        let footerH = 0;
+        if (creditsEl) footerH += creditsEl.offsetHeight || 0;
+        if (tipJarEl) footerH += tipJarEl.offsetHeight || 0;
+
+        const availH = vh - footerH - 10;
+
+        // Integer scaling based on available space
+        let scale = Math.floor(Math.min(vw / W, availH / H));
+        if (scale < 1) scale = 1;
+
+        // CSS size (logical pixels)
+        canvas.style.width = (W * scale) + 'px';
+        canvas.style.height = (H * scale) + 'px';
+
+        // Backing store size (physical pixels) — match the CSS size × dpr
+        // so the browser doesn't blur the canvas on HiDPI screens.
+        const bufferW = W * scale * dpr;
+        const bufferH = H * scale * dpr;
+
+        if (canvas.width !== bufferW || canvas.height !== bufferH) {
+            canvas.width = bufferW;
+            canvas.height = bufferH;
+            // Scale context so draw calls still use the native 480×270 coords
+            ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+            // Disable image smoothing for crisp pixel art
+            ctx.imageSmoothingEnabled = false;
+        }
+    }
+
+    // Scale on load and on every resize
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // ── Canvas & World ──────────────────────────────────────────
+    const WORLD_W = 1920; // 4 screens wide
+    const SEA_SURFACE_Y = 20;
+    const SEA_BOTTOM_Y = 250;
+    const GROUND_H = 20; // ground features zone: y 250-270
+
+    // ── Player Config ───────────────────────────────────────────
+    const PLAYER_CFG = {
+        w: 80, h: 29,
+        accel: 0.35,           // pixels/frame² at 60fps
+        decel: 0.15,           // friction when no input
+        maxSpeed: 3.5,         // pixels/frame at 60fps
+        shotSpeed: 6.0,        // projectile speed
+        shotCooldown: 8,       // frames between shots (≈133ms)
+        maxBullets: 4,         // max on-screen player projectiles
+        shotLifetime: 90,      // frames before projectile expires
+        startLives: 3,
+        maxLives: 6,
+        invincibilityDuration: 150, // frames (≈2.5s)
+        respawnDelay: 60,      // frames before respawn
+        hb: { x: 6, y: 3, w: 68, h: 23 }, // hitbox offset from sprite
+        animFrames: 2,         // 2-frame swim animation
+        animInterval: 14,      // frames between animation frames
+    };
+
+    // ── Dash Config ─────────────────────────────────────────────
+    const DASH_CFG = {
+        speed: 10.0,           // pixels/frame during dash
+        duration: 12,          // frames (≈200ms)
+        cooldown: 180,         // frames (≈3s)
+    };
+
+    // ── Smart Bomb Config ───────────────────────────────────────
+    const BOMB_CFG = {
+        startCount: 3,
+        maxCount: 5,
+        earnPerLevel: 1,
+    };
+
+    // ── Enemy Configs ───────────────────────────────────────────
+    const ENEMY_CFG = {
+        abductor: {
+            w: 40, h: 52,
+            speed: 1.2,
+            carrySpeed: 0.6,       // slower while carrying Deep One
+            points: 150,
+            hb: { x: 4, y: 4, w: 32, h: 44 },
+            animFrames: 2,
+            animInterval: 12,
+        },
+        crab: {
+            w: 50, h: 27,
+            speed: 0.8,
+            damagePerFrame: 0.15,  // damage to Monolith per frame while in contact
+            points: 100,
+            hb: { x: 4, y: 2, w: 42, h: 23 },
+            animFrames: 2,
+            animInterval: 10,
+        },
+        pursuer: {
+            w: 70, h: 36,
+            baseSpeed: 1.5,
+            maxSpeed: 2.8,         // cap after scaling
+            fireChance: 0.015,     // per-frame probability of firing
+            maxFireChance: 0.04,
+            points: 200,
+            hb: { x: 6, y: 3, w: 58, h: 30 },
+            animFrames: 2,
+            animInterval: 10,
+        },
+        drifter: {
+            w: 50, h: 40,
+            speed: 0.6,
+            dirChangeInterval: { min: 60, max: 180 }, // frames between direction changes
+            bombDropChance: 0.006, // per-frame chance to drop a mine
+            points: 75,
+            hb: { x: 4, y: 4, w: 42, h: 32 },
+            animFrames: 2,
+            animInterval: 14,
+        },
+        mutant: {
+            w: 130, h: 54,
+            speed: 2.5,
+            points: 400,
+            hb: { x: 10, y: 4, w: 110, h: 46 },
+            animFrames: 2,
+            animInterval: 8,
+        },
+    };
+
+    // ── Enemy Glow Points ──────────────────────────────────────
+    // Per-frame glow pixel positions (relative to sprite top-left, facing right).
+    // Automatically flipped horizontally when enemy faces left.
+    // Each entry: { x, y, color } — color defaults to '#ffeb3b' (yellow) if omitted.
+    const ENEMY_GLOW_POINTS = {
+        abductor: [
+            [{ x: 20, y: 10 }, { x: 28, y: 12 }, { x: 32, y: 14 }],
+            [{ x: 17, y: 11 }, { x: 27, y: 14 }, { x: 31, y: 16 }],
+        ],
+        crab: [
+            [{ x: 21, y: 7 }, { x: 27, y: 7 }],
+            [{ x: 22, y: 7 }, { x: 28, y: 7 }],
+        ],
+        pursuer: [
+            [{ x: 57, y: 14 }],
+            [{ x: 56, y: 16 }],
+        ],
+        drifter: [
+            [{ x: 25, y: 8 }, { x: 30, y: 8 }],
+            [{ x: 25, y: 9 }, { x: 29, y: 8 }],
+        ],
+        mutant: [
+            [{ x: 82, y: 16 }, { x: 96, y: 17 }],
+            [{ x: 83, y: 17 }, { x: 96, y: 19 }],
+        ],
+    };
+
+    // ── Enemy Projectile Config ─────────────────────────────────
+    const ENEMY_PROJ_CFG = {
+        w: 4, h: 4,
+        speed: 2.5,
+        maxOnScreen: 12,
+        hb: { x: 0, y: 0, w: 4, h: 4 },
+    };
+
+    // ── Drifter Mine Config ─────────────────────────────────────
+    const MINE_CFG = {
+        w: 8, h: 8,
+        hb: { x: 1, y: 1, w: 6, h: 6 },
+        lifetime: 300,             // frames before mine expires (~5s)
+        maxOnScreen: 8,
+        pulseSpeed: 0.015,         // radians per ms for glow pulse
+    };
+
+    // ── Tentacle Obstacle Config ────────────────────────────────
+    const TENTACLE_CFG = {
+        count: { min: 4, max: 8 },     // per level
+        w: 45,                          // sprite width (matches tentacle.png)
+        minHeight: 130,                 // min height (~57% of play area)
+        maxHeight: 160,                 // max height (~70% of play area)
+        hitboxW: 16,                    // narrower hitbox than visual
+        waveSpeed: 2.5,                // wave animation speed (sway)
+        waveAmplitude: 8,              // pixels of horizontal sway
+        waveSegments: 12,              // how many slices for distortion
+        riseSpeed: 0.0004,             // very slow rise speed (fraction of height per ms)
+        risePause: 3000,               // ms to pause at top before sinking
+    };
+
+    // ── Deep One Config ─────────────────────────────────────────
+    const DEEP_ONE_CFG = {
+        w: 11, h: 20,
+        count: 10,                 // per level
+        wanderSpeed: 0.3,
+        wanderRadius: 40,          // pixels — max distance from spawn position
+        repairRate: 0.12,          // Monolith HP restored per frame while repairing
+        repairRange: 60,           // pixels from Monolith to start repairing
+        seekSpeed: 0.8,            // speed when actively seeking Monolith to repair
+        dartSpeed: 4.0,            // speed when freed from Abductor
+        hb: { x: 1, y: 2, w: 9, h: 16 },
+        animFrames: 2,
+        animInterval: 16,
+    };
+
+    // ── Monolith Config ─────────────────────────────────────────
+    const MONOLITH_CFG = {
+        w: 40, h: 64,
+        maxHP: 100,
+        damageStates: 3,           // undamaged, cracked, heavily damaged
+        hb: { x: 4, y: 4, w: 32, h: 56 },
+    };
+
+    // ── Scoring Config ──────────────────────────────────────────
+    const SCORE_CFG = {
+        rescueBonus: 500,
+        comboWindow: 90,           // frames (≈1.5s) to chain kills
+        comboMultiplierMax: 8,
+        extraLifeInterval: 10000,  // points between extra lives
+        endOfLevel: {
+            deepOneSurvivalBonus: 200,   // per surviving Deep One
+            monolithHealthBonus: 5,      // per 1% remaining health
+        },
+    };
+
+    // ── Difficulty Scaling ──────────────────────────────────────
+    const SCALING = {
+        // Enemy counts per level (base + increment per level, capped)
+        abductorCount:  { base: 3,  inc: 1,   cap: 10 },
+        crabCount:      { base: 2,  inc: 1,   cap: 8  },
+        pursuerCount:   { base: 1,  inc: 1,   cap: 6  },
+        drifterCount:   { base: 2,  inc: 1,   cap: 8  },
+        // Speed multipliers (applied to base speed)
+        speedMultiplier:    { base: 1.0, inc: 0.05, cap: 1.6 },
+        // Aggression (Pursuer tracking tightness, Abductor target acquisition speed)
+        aggressionMult:     { base: 1.0, inc: 0.08, cap: 2.0 },
+        // Enemy fire rate multiplier
+        fireRateMult:       { base: 1.0, inc: 0.1,  cap: 2.5 },
+        // Level at which difficulty plateaus
+        plateauLevel: 20,
+    };
+
+    // ── Spawn Safeguards ────────────────────────────────────────
+    const SPAWN_CFG = {
+        minDistFromPlayer: 120,    // pixels — no enemy spawns closer than this
+        minDistFromRespawn: 100,   // pixels — safe zone around respawn point
+        spawnOutsideViewport: true,
+    };
+
+    // ── Camera Config ───────────────────────────────────────────
+    const CAMERA_CFG = {
+        lerpSpeed: 0.08,           // interpolation factor per frame
+        lookAheadBase: 60,         // pixels ahead in facing direction
+        lookAheadSpeedScale: 0.4,  // additional look-ahead per unit of velocity
+        lookAheadTransitionSpeed: 0.05, // lerp for direction change
+        verticalBias: -40,         // negative = player in upper portion of screen
+        shakeDecay: 0.85,          // shake amplitude multiplier per frame
+    };
+
+    // ── Object Pool Sizes ───────────────────────────────────────
+    const POOL_SIZES = {
+        playerProjectiles: 8,
+        enemyProjectiles: 20,
+        particles: 150,
+        damageNumbers: 20,
+    };
+
+    // ── Timing Constants ────────────────────────────────────────
+    const TIMING = {
+        dtCap: 4.0,                // max delta-time (250ms / 16.67ms ≈ 15, but we use 4 for safety)
+        deathPauseFrames: 60,
+        levelTransitionFrames: 180,
+        hitFlashFrames: 6,
+        knockbackFrames: 8,
+        knockbackForce: 3.0,
+        screenShakeDuration: 18,   // frames (≈300ms)
+        screenShakeIntensity: 4,   // pixels
+        bombShakeIntensity: 8,
+        bombFlashFrames: 10,
+        damageVignetteFrames: 20,
+        levelSummaryDuration: 300, // frames (≈5s) or until key press
+    };
+
+    // ── Parallax Config ─────────────────────────────────────────
+    const PARALLAX = {
+        farSpeedRatio: 0.3,        // background scrolls at 30% of camera speed
+        nearSpeedRatio: 1.0,       // foreground matches camera
+        causticAnimSpeed: 0.02,    // radians per frame for caustic wave
+        bubbleSpawnChance: 0.03,   // per frame
+        bubbleRiseSpeed: 0.5,
+    };
+
+    // ── Audio Config ────────────────────────────────────────────
+    const AUDIO_CFG = {
+        channels: ['sfx', 'ambient', 'music'],
+        defaultVolumes: { sfx: 1.0, ambient: 0.6, music: 0.5 },
+        localStorageKey: 'dagon_audio_volumes',
+        highScoreKey: 'dagon_high_score',
+        maxConcurrentSfx: 8,
+        duckingFactor: 0.3,        // lower-priority SFX volume when alerts play
+        intensityThreshold: 0.5,   // threat level (0-1) at which music shifts to intense
+    };
+
+    // ── Touch Controls ──────────────────────────────────────────
+    const TOUCH_CFG = {
+        breakpoint: 500,           // viewport width threshold for showing touch controls
+    };
+
+    // ── Threat Saturation ───────────────────────────────────────
+    const THREAT_CFG = {
+        maxCrabsAttacking: 3,     // max Crabs simultaneously damaging Monolith
+        crabQueueDistance: 40,    // pixels from Monolith where queued Crabs wait
+        spawnStaggerFrames: 30,   // frames between enemy spawn batches at level start
+    };
+
+    // ── Accessibility ───────────────────────────────────────────
+    const ACCESSIBILITY_CFG = {
+        localStorageKey: 'dagon_accessibility',
+        defaults: {
+            reduceShake: false,
+            highContrastMiniMap: false,
+        },
+        shakeReductionFactor: 0.25, // multiply shake intensity by this when enabled
+    };
+
+    // ── Debug Flags (development only) ─────────────────────────
+    const DEBUG = {
+        showHitboxes: false,      // render AABB hitboxes as colored outlines
+        showSpawnPoints: false,   // mark spawn positions with X markers
+        showAIStates: false,      // render current FSM state text above enemies
+        showFPS: false,           // display FPS counter in top-right corner
+        showEntityCount: false,   // display active entity count
+        enabled: false,           // master toggle (set true during development)
+    };
+
+    // ── Utility Functions ────────────────────────────────────────
+
+    /**
+     * AABB collision detection. Returns true if two rectangles overlap.
+     * Each rect must have {x, y, w, h} properties.
+     */
+    function aabb(a, b) {
+        return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+
+    /**
+     * Seeded PRNG (mulberry32). Returns a function that produces
+     * deterministic random numbers in [0, 1).
+     */
+    function createRNG(seed) {
+        return function() {
+            seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+            let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+            t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+            return ((t ^ t >>> 14) >>> 0) / 4294967296;
+        };
+    }
+    let rng = createRNG(Date.now());
+
+    /**
+     * World-wrap: keeps x within [0, worldW) using modular arithmetic.
+     */
+    function wrapPosition(x, worldW) {
+        return ((x % worldW) + worldW) % worldW;
+    }
+
+    /**
+     * If magnitude of (vx, vy) exceeds maxSpeed, scale both components
+     * down proportionally. Returns {vx, vy}.
+     */
+    function normalizeVelocity(vx, vy, maxSpeed) {
+        const mag = Math.sqrt(vx * vx + vy * vy);
+        if (mag > maxSpeed) {
+            const scale = maxSpeed / mag;
+            return { vx: vx * scale, vy: vy * scale };
+        }
+        return { vx, vy };
+    }
+
+    /**
+     * Calculate delta-time normalized to 60fps frame baseline (16.667ms).
+     * Capped at TIMING.dtCap to prevent physics explosions on tab-away.
+     */
+    function computeDt(now, lastTime) {
+        if (lastTime === 0) return 1;
+        const raw = (now - lastTime) / 16.667;
+        return Math.min(raw, TIMING.dtCap);
+    }
+
+    /**
+     * Difficulty scaling with plateau. Computes a value that increases
+     * linearly from param.base by param.inc per level, capped at param.cap.
+     * Levels beyond SCALING.plateauLevel use the plateau level value.
+     */
+    function getScaledValue(param, level) {
+        const effectiveLevel = Math.min(level, SCALING.plateauLevel);
+        const value = param.base + param.inc * (effectiveLevel - 1);
+        if (param.inc > 0) return Math.min(value, param.cap);
+        return Math.max(value, param.cap);
+    }
+
+    /**
+     * Proportional mapping of a world X position to mini-map pixel position.
+     */
+    function calculateMiniMapPosition(worldX, worldW, mapW) {
+        return worldX * (mapW / worldW);
+    }
+
+    /**
+     * Check if an entity is visible in the viewport, accounting for world wrap.
+     * Returns true if any part of the entity is within the viewport.
+     */
+    function isInViewport(entityX, entityW, cameraX, viewportW, worldW) {
+        // Normalize entity position relative to camera, accounting for wrap
+        let relX = entityX - cameraX;
+        if (relX < -worldW / 2) relX += worldW;
+        if (relX > worldW / 2) relX -= worldW;
+        // Entity is visible if its right edge is past viewport left
+        // and its left edge is before viewport right
+        return relX + entityW > 0 && relX < viewportW;
+    }
+
+    /**
+     * Returns effective screen shake intensity, reduced when accessibility
+     * shake reduction is enabled.
+     */
+    function getEffectiveShakeIntensity(baseIntensity, accessibility) {
+        return baseIntensity * (accessibility.reduceShake ? ACCESSIBILITY_CFG.shakeReductionFactor : 1.0);
+    }
+
+    /**
+     * Determine game-over cause. Returns 'player_death' if lives <= 0,
+     * 'monolith_destroyed' if monolithHP <= 0, or null if game continues.
+     */
+    function getLossReason(lives, monolithHP) {
+        if (lives <= 0) return 'player_death';
+        if (monolithHP <= 0) return 'monolith_destroyed';
+        return null;
+    }
+
+    /**
+     * Calculate end-of-level bonus from surviving Deep Ones and Monolith health.
+     */
+    function calculateBonus(survivingDeepOnes, monolithHealthPercent) {
+        return (survivingDeepOnes * SCORE_CFG.endOfLevel.deepOneSurvivalBonus) +
+               (monolithHealthPercent * SCORE_CFG.endOfLevel.monolithHealthBonus);
+    }
+
+    /**
+     * Parse and validate a high score value from localStorage.
+     * Returns a non-negative integer, or 0 if the value is invalid.
+     */
+    function validateHighScore(rawValue) {
+        const parsed = parseInt(rawValue, 10);
+        if (!Number.isFinite(parsed) || parsed < 0) return 0;
+        return Math.floor(parsed);
+    }
+
+    /**
+     * Returns a random number between min and max (inclusive) using
+     * the seeded RNG.
+     */
+    function randomRange(min, max) {
+        return min + rng() * (max - min);
+    }
+
+    /**
+     * Euclidean distance between two points.
+     */
+    function distanceBetween(x1, y1, x2, y2) {
+        const dx = x1 - x2;
+        const dy = y1 - y2;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    /**
+     * Find a spawn position at least minDist from the player and all enemies.
+     * Tries random positions within the world; returns the first safe one.
+     * Falls back to a random position after maxAttempts.
+     */
+    function findSafeSpawnPosition(playerX, playerY, enemies, minDist, worldW) {
+        const maxAttempts = 50;
+        for (let i = 0; i < maxAttempts; i++) {
+            const x = rng() * worldW;
+            const y = SEA_SURFACE_Y + rng() * (SEA_BOTTOM_Y - SEA_SURFACE_Y);
+            // Check distance from player (accounting for world wrap)
+            const dxPlayer = Math.abs(x - playerX);
+            const wrappedDxPlayer = Math.min(dxPlayer, worldW - dxPlayer);
+            const distToPlayer = Math.sqrt(wrappedDxPlayer * wrappedDxPlayer + (y - playerY) * (y - playerY));
+            if (distToPlayer < minDist) continue;
+            // Check distance from all enemies
+            let safe = true;
+            for (let j = 0; j < enemies.length; j++) {
+                const e = enemies[j];
+                if (!e.alive) continue;
+                const dxEnemy = Math.abs(x - e.x);
+                const wrappedDxEnemy = Math.min(dxEnemy, worldW - dxEnemy);
+                const distToEnemy = Math.sqrt(wrappedDxEnemy * wrappedDxEnemy + (y - e.y) * (y - e.y));
+                if (distToEnemy < minDist) { safe = false; break; }
+            }
+            if (safe) return { x, y };
+        }
+        // Fallback: return a random position
+        return { x: rng() * worldW, y: SEA_SURFACE_Y + rng() * (SEA_BOTTOM_Y - SEA_SURFACE_Y) };
+    }
+
+    // ── Namco Pixel Font (8×8) ──────────────────────────────────
+
+    const FONT = {
+        '0': [0x3C,0x66,0x6E,0x76,0x66,0x66,0x3C,0x00],
+        '1': [0x18,0x38,0x18,0x18,0x18,0x18,0x7E,0x00],
+        '2': [0x3C,0x66,0x06,0x1C,0x30,0x66,0x7E,0x00],
+        '3': [0x3C,0x66,0x06,0x1C,0x06,0x66,0x3C,0x00],
+        '4': [0x0E,0x1E,0x36,0x66,0x7F,0x06,0x06,0x00],
+        '5': [0x7E,0x60,0x7C,0x06,0x06,0x66,0x3C,0x00],
+        '6': [0x1C,0x30,0x60,0x7C,0x66,0x66,0x3C,0x00],
+        '7': [0x7E,0x66,0x06,0x0C,0x18,0x18,0x18,0x00],
+        '8': [0x3C,0x66,0x66,0x3C,0x66,0x66,0x3C,0x00],
+        '9': [0x3C,0x66,0x66,0x3E,0x06,0x0C,0x38,0x00],
+        'A': [0x18,0x3C,0x66,0x66,0x7E,0x66,0x66,0x00],
+        'B': [0x7C,0x66,0x66,0x7C,0x66,0x66,0x7C,0x00],
+        'C': [0x3C,0x66,0x60,0x60,0x60,0x66,0x3C,0x00],
+        'D': [0x78,0x6C,0x66,0x66,0x66,0x6C,0x78,0x00],
+        'E': [0x7E,0x60,0x60,0x7C,0x60,0x60,0x7E,0x00],
+        'F': [0x7E,0x60,0x60,0x7C,0x60,0x60,0x60,0x00],
+        'G': [0x3C,0x66,0x60,0x6E,0x66,0x66,0x3E,0x00],
+        'H': [0x66,0x66,0x66,0x7E,0x66,0x66,0x66,0x00],
+        'I': [0x3C,0x18,0x18,0x18,0x18,0x18,0x3C,0x00],
+        'J': [0x06,0x06,0x06,0x06,0x06,0x66,0x3C,0x00],
+        'K': [0x66,0x6C,0x78,0x70,0x78,0x6C,0x66,0x00],
+        'L': [0x60,0x60,0x60,0x60,0x60,0x60,0x7E,0x00],
+        'M': [0x63,0x77,0x7F,0x6B,0x63,0x63,0x63,0x00],
+        'N': [0x66,0x76,0x7E,0x7E,0x6E,0x66,0x66,0x00],
+        'O': [0x3C,0x66,0x66,0x66,0x66,0x66,0x3C,0x00],
+        'P': [0x7C,0x66,0x66,0x7C,0x60,0x60,0x60,0x00],
+        'Q': [0x3C,0x66,0x66,0x66,0x6A,0x6C,0x36,0x00],
+        'R': [0x7C,0x66,0x66,0x7C,0x6C,0x66,0x66,0x00],
+        'S': [0x3C,0x66,0x60,0x3C,0x06,0x66,0x3C,0x00],
+        'T': [0x7E,0x18,0x18,0x18,0x18,0x18,0x18,0x00],
+        'U': [0x66,0x66,0x66,0x66,0x66,0x66,0x3C,0x00],
+        'V': [0x66,0x66,0x66,0x66,0x66,0x3C,0x18,0x00],
+        'W': [0x63,0x63,0x63,0x6B,0x7F,0x77,0x63,0x00],
+        'X': [0x66,0x66,0x3C,0x18,0x3C,0x66,0x66,0x00],
+        'Y': [0x66,0x66,0x66,0x3C,0x18,0x18,0x18,0x00],
+        'Z': [0x7E,0x06,0x0C,0x18,0x30,0x60,0x7E,0x00],
+        ' ': [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
+        ':': [0x00,0x18,0x18,0x00,0x18,0x18,0x00,0x00],
+        '.': [0x00,0x00,0x00,0x00,0x00,0x18,0x18,0x00],
+        '-': [0x00,0x00,0x00,0x3C,0x00,0x00,0x00,0x00],
+        '!': [0x18,0x18,0x18,0x18,0x18,0x00,0x18,0x00],
+        '?': [0x3C,0x66,0x06,0x0C,0x18,0x00,0x18,0x00],
+        '/': [0x02,0x06,0x0C,0x18,0x30,0x60,0x40,0x00],
+        '+': [0x00,0x18,0x18,0x7E,0x18,0x18,0x00,0x00],
+        ',': [0x00,0x00,0x00,0x00,0x00,0x18,0x18,0x30],
+        '\'': [0x18,0x18,0x18,0x00,0x00,0x00,0x00,0x00],
+        '%': [0x62,0x64,0x08,0x10,0x20,0x4C,0x8C,0x00],
+    };
+
+    /** Draw a single 8×8 character at (x, y) in the given color. */
+    function drawChar(ch, x, y, color) {
+        const glyph = FONT[ch];
+        if (!glyph) return;
+        ctx.fillStyle = color;
+        for (let row = 0; row < 8; row++) {
+            const bits = glyph[row];
+            for (let col = 0; col < 8; col++) {
+                if (bits & (1 << (7 - col))) {
+                    ctx.fillRect(x + col, y + row, 1, 1);
+                }
+            }
+        }
+    }
+
+    /** Draw a string of text at (x, y). Each character is 8px wide. */
+    function drawText(text, x, y, color) {
+        const c = color || '#c8d8c8';
+        const str = String(text).toUpperCase();
+        for (let i = 0; i < str.length; i++) {
+            drawChar(str[i], x + i * 8, y, c);
+        }
+    }
+
+    /** Draw text centered horizontally at the given y. */
+    function drawTextCenter(text, y, color) {
+        const str = String(text).toUpperCase();
+        const w = str.length * 8;
+        drawText(str, Math.round((W - w) / 2), y, color || '#c8d8c8');
+    }
+
+    /** Draw text at 2× size (16px per character), centered. */
+    function drawTextLarge(text, y, color) {
+        const c = color || '#c8d8c8';
+        const str = String(text).toUpperCase();
+        const totalW = str.length * 16;
+        const startX = Math.round((W - totalW) / 2);
+        ctx.fillStyle = c;
+        for (let i = 0; i < str.length; i++) {
+            const glyph = FONT[str[i]];
+            if (!glyph) continue;
+            const cx = startX + i * 16;
+            for (let row = 0; row < 8; row++) {
+                const bits = glyph[row];
+                for (let col = 0; col < 8; col++) {
+                    if (bits & (1 << (7 - col))) {
+                        ctx.fillRect(cx + col * 2, y + row * 2, 2, 2);
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Entity Classes ──────────────────────────────────────────
+
+    /**
+     * Entity base class. All game objects (player, enemies, projectiles,
+     * particles) extend this. Provides position, velocity, hitbox,
+     * animation state, and flash timer.
+     */
+    class Entity {
+        constructor(x, y, cfg) {
+            this.x = x;
+            this.y = y;
+            this.w = cfg.w;
+            this.h = cfg.h;
+            this.vx = 0;
+            this.vy = 0;
+            this.alive = true;
+            this.hb = cfg.hb;
+            this.animFrame = 0;
+            this.animTimer = 0;
+            this.animInterval = cfg.animInterval || 12;
+            this.animFrames = cfg.animFrames || 1;
+            this.flashTimer = 0;
+        }
+        getHitbox() {
+            return { x: this.x + this.hb.x, y: this.y + this.hb.y, w: this.hb.w, h: this.hb.h };
+        }
+        updateAnimation(dt) {
+            this.animTimer += dt;
+            if (this.animTimer >= this.animInterval) {
+                this.animTimer -= this.animInterval;
+                this.animFrame = (this.animFrame + 1) % this.animFrames;
+            }
+            if (this.flashTimer > 0) this.flashTimer -= dt;
+        }
+        kill() { this.alive = false; }
+    }
+
+    /**
+     * Player class. Acceleration-based movement with facing direction,
+     * shot cooldown with input buffering, dash, bomb, and damage handling.
+     */
+    class Player extends Entity {
+        constructor(x, y) {
+            super(x, y, PLAYER_CFG);
+            this.facingRight = true;
+            this.shotCooldownTimer = 0;
+            this.fireBuffered = false;
+            this.dashCooldownTimer = 0;
+            this.isDashing = false;
+            this.dashTimer = 0;
+            this.invincibilityTimer = 0;
+        }
+        update(dt, input) {
+            // Update dash state
+            if (this.isDashing) {
+                this.dashTimer -= dt;
+                if (this.dashTimer <= 0) {
+                    this.isDashing = false;
+                    this.dashTimer = 0;
+                    // Kill dash velocity so player doesn't coast
+                    this.vx = Math.sign(this.vx) * PLAYER_CFG.maxSpeed * 0.5;
+                    this.vy = 0;
+                }
+            }
+
+            // Movement: during dash, velocity is locked to dash speed
+            if (!this.isDashing) {
+                // Apply acceleration in pressed directions
+                if (input.left) this.vx -= PLAYER_CFG.accel * dt;
+                if (input.right) this.vx += PLAYER_CFG.accel * dt;
+                if (input.up) this.vy -= PLAYER_CFG.accel * dt;
+                if (input.down) this.vy += PLAYER_CFG.accel * dt;
+
+                // Apply deceleration when no input on an axis
+                if (!input.left && !input.right) {
+                    if (Math.abs(this.vx) < PLAYER_CFG.decel * dt * 2) {
+                        this.vx = 0;
+                    } else {
+                        this.vx -= Math.sign(this.vx) * PLAYER_CFG.decel * dt * 2;
+                    }
+                }
+                if (!input.up && !input.down) {
+                    if (Math.abs(this.vy) < PLAYER_CFG.decel * dt * 2) {
+                        this.vy = 0;
+                    } else {
+                        this.vy -= Math.sign(this.vy) * PLAYER_CFG.decel * dt * 2;
+                    }
+                }
+
+                // Normalize velocity to prevent faster diagonal movement, clamp to maxSpeed
+                const norm = normalizeVelocity(this.vx, this.vy, PLAYER_CFG.maxSpeed);
+                this.vx = norm.vx;
+                this.vy = norm.vy;
+            }
+
+            // Update position
+            this.x += this.vx * dt;
+            this.y += this.vy * dt;
+
+            // Wrap X with world wrapping
+            this.x = wrapPosition(this.x, WORLD_W);
+
+            // Clamp Y between sea surface and sea bottom
+            if (this.y < SEA_SURFACE_Y) this.y = SEA_SURFACE_Y;
+            if (this.y > SEA_BOTTOM_Y - this.h) this.y = SEA_BOTTOM_Y - this.h;
+
+            // Update facing direction on horizontal input change
+            if (input.right && !input.left) this.facingRight = true;
+            if (input.left && !input.right) this.facingRight = false;
+
+            // Decrement cooldown timers
+            if (this.shotCooldownTimer > 0) this.shotCooldownTimer -= dt;
+            if (this.dashCooldownTimer > 0) this.dashCooldownTimer -= dt;
+            if (this.invincibilityTimer > 0) this.invincibilityTimer -= dt;
+
+            // Handle fire buffering: if buffered and cooldown expired, fire
+            if (this.fireBuffered && this.shotCooldownTimer <= 0) {
+                this.fireBuffered = false;
+            }
+
+            // Update animation
+            this.updateAnimation(dt);
+        }
+        fire(projectilePool) {
+            if (this.shotCooldownTimer <= 0 && projectilePool.count < PLAYER_CFG.maxBullets) {
+                const dir = this.facingRight ? 1 : -1;
+                const projX = this.facingRight ? this.x + this.w : this.x - 4;
+                const projY = this.y + this.h / 2 - 2;
+                projectilePool.acquire(projX, projY, PLAYER_CFG.shotSpeed * dir, 0);
+                this.shotCooldownTimer = PLAYER_CFG.shotCooldown;
+                this.fireBuffered = false;
+                return true;
+            }
+            if (this.shotCooldownTimer > 0) {
+                this.fireBuffered = true;
+            }
+            return false;
+        }
+        dash() {
+            if (this.dashCooldownTimer <= 0 && !this.isDashing) {
+                this.isDashing = true;
+                this.dashTimer = DASH_CFG.duration;
+                this.dashCooldownTimer = DASH_CFG.cooldown;
+                // Apply dash speed in facing direction, zero vertical
+                const dir = this.facingRight ? 1 : -1;
+                this.vx = DASH_CFG.speed * dir;
+                this.vy = 0;
+                return true;
+            }
+            return false;
+        }
+        activateBomb(state) {
+            if (state && state.bombs > 0) {
+                return true; // actual bomb logic handled by game code
+            }
+            return false;
+        }
+        takeDamage() {
+            if (this.invincibilityTimer > 0 || this.isDashing) {
+                return false; // invulnerable — no damage
+            }
+            return true; // actual damage logic handled by game code
+        }
+    }
+
+    /**
+     * ObjectPool — pre-allocated pool for frequently created/destroyed
+     * entities (projectiles, particles). Avoids runtime allocation and GC.
+     */
+    class ObjectPool {
+        constructor(factory, size) {
+            this.pool = [];
+            this.active = [];
+            for (let i = 0; i < size; i++) this.pool.push(factory());
+        }
+        acquire(x, y, vx, vy) {
+            const obj = this.pool.pop();
+            if (!obj) return null;
+            obj.x = x; obj.y = y; obj.vx = vx; obj.vy = vy;
+            obj.alive = true; obj.lifetime = 0;
+            obj.animFrame = 0; obj.animTimer = 0; obj.flashTimer = 0;
+            this.active.push(obj);
+            return obj;
+        }
+        release(obj) {
+            const idx = this.active.indexOf(obj);
+            if (idx !== -1) { this.active.splice(idx, 1); this.pool.push(obj); }
+        }
+        releaseAll() {
+            while (this.active.length > 0) this.pool.push(this.active.pop());
+        }
+        forEach(fn) { for (let i = 0; i < this.active.length; i++) fn(this.active[i], i); }
+        get count() { return this.active.length; }
+    }
+
+    /**
+     * Projectile class. Used for both player and enemy projectiles,
+     * differentiated by which pool they belong to. Tracks lifetime
+     * and auto-kills when expired.
+     */
+    class Projectile extends Entity {
+        constructor(cfg) {
+            super(0, 0, cfg);
+            this.lifetime = 0;
+            this.maxLifetime = cfg.maxLifetime || PLAYER_CFG.shotLifetime;
+        }
+        update(dt) {
+            this.x += this.vx * dt;
+            this.y += this.vy * dt;
+            this.lifetime += dt;
+            if (this.lifetime > this.maxLifetime) {
+                this.kill();
+                return;
+            }
+            // Wrap X position
+            this.x = wrapPosition(this.x, WORLD_W);
+            this.updateAnimation(dt);
+        }
+    }
+
+    /**
+     * Particle class. Short-lived visual effect with position, velocity,
+     * lifetime, color, and alpha fade.
+     */
+    class Particle extends Entity {
+        constructor() {
+            super(0, 0, { w: 2, h: 2, hb: { x: 0, y: 0, w: 2, h: 2 } });
+            this.lifetime = 0;
+            this.maxLifetime = 30;
+            this.alpha = 1;
+            this.scale = 1;
+            this.color = '#ffffff';
+        }
+        init(x, y, vx, vy, lifetime, color, scale) {
+            this.x = x; this.y = y;
+            this.vx = vx; this.vy = vy;
+            this.lifetime = lifetime;
+            this.maxLifetime = lifetime;
+            this.alpha = 1;
+            this.scale = scale || 1;
+            this.color = color || '#ffffff';
+            this.alive = true;
+        }
+        update(dt) {
+            this.x += this.vx * dt;
+            this.y += this.vy * dt;
+            this.lifetime -= dt;
+            this.alpha = Math.max(0, this.lifetime / this.maxLifetime);
+            this.scale = Math.max(0, this.lifetime / this.maxLifetime);
+            if (this.lifetime <= 0) this.kill();
+        }
+    }
+
+    /**
+     * DeepOne class. Small humanoid sea creatures that wander near their
+     * spawn position, repair the Monolith when damaged, can be abducted
+     * by Abductors, and dart away when freed.
+     */
+    class DeepOne extends Entity {
+        constructor(x, y) {
+            super(x, y, DEEP_ONE_CFG);
+            this.state = 'WANDERING';
+            this.spawnX = x;
+            this.targeted = false;
+            this.carriedBy = null;
+            this.beingAbducted = false;
+            this.repairTarget = null;
+            this.wanderDir = rng() < 0.5 ? 1 : -1;
+            this.wanderTimer = Math.floor(randomRange(30, 90));
+        }
+        update(dt, monolith, enemiesCleared) {
+            switch (this.state) {
+                case 'WANDERING': {
+                    // If enemies are cleared and Monolith needs repair, go repair
+                    if (enemiesCleared && monolith && monolith.hp < MONOLITH_CFG.maxHP) {
+                        this.state = 'REPAIRING';
+                        break;
+                    }
+
+                    // Wander near spawnX within wanderRadius at wanderSpeed
+                    this.x += this.wanderDir * DEEP_ONE_CFG.wanderSpeed * dt;
+
+                    // Reverse direction if too far from spawn
+                    if (Math.abs(this.x - this.spawnX) > DEEP_ONE_CFG.wanderRadius) {
+                        this.wanderDir = (this.x > this.spawnX) ? -1 : 1;
+                    }
+
+                    // Randomly change direction at intervals
+                    this.wanderTimer -= dt;
+                    if (this.wanderTimer <= 0) {
+                        this.wanderDir = rng() < 0.5 ? 1 : -1;
+                        this.wanderTimer = Math.floor(randomRange(30, 90));
+                    }
+
+                    // Check if Monolith needs repair and we're close enough
+                    if (monolith && monolith.hp < MONOLITH_CFG.maxHP) {
+                        const dist = distanceBetween(this.x, this.y, monolith.x, monolith.y);
+                        if (dist < DEEP_ONE_CFG.repairRange) {
+                            this.state = 'REPAIRING';
+                        }
+                    }
+                    break;
+                }
+                case 'REPAIRING': {
+                    // Move toward monolith
+                    if (monolith) {
+                        const dx = monolith.x + monolith.w / 2 - (this.x + this.w / 2);
+                        const dy = monolith.y + monolith.h - (this.y + this.h);
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+
+                        if (dist > 4) {
+                            // Move toward monolith at seek speed
+                            const speed = DEEP_ONE_CFG.seekSpeed;
+                            this.x += (dx / dist) * speed * dt;
+                            this.y += (dy / dist) * speed * dt;
+                        } else {
+                            // Close enough — repair
+                            monolith.repair(DEEP_ONE_CFG.repairRate * dt);
+                        }
+
+                        // If monolith at full HP, switch back to wandering
+                        if (monolith.hp >= MONOLITH_CFG.maxHP) {
+                            this.state = 'WANDERING';
+                        }
+                    }
+                    break;
+                }
+                case 'BEING_ABDUCTED': {
+                    // Position controlled by Abductor — do nothing here
+                    break;
+                }
+                case 'DARTING_AWAY': {
+                    // Move at dartSpeed in dart direction
+                    this.x += this.vx * dt;
+                    this.y += this.vy * dt;
+
+                    // Kill after leaving viewport (generous bounds)
+                    if (this.y < -50 || this.y > H + 50 ||
+                        this.x < -50 || this.x > WORLD_W + 50) {
+                        this.kill();
+                    }
+                    break;
+                }
+            }
+            this.updateAnimation(dt);
+        }
+        startAbduction(abductor) {
+            this.state = 'BEING_ABDUCTED';
+            this.beingAbducted = true;
+            this.carriedBy = abductor || null;
+            playSound('deepOneAbducted');
+        }
+        release() {
+            this.state = 'DARTING_AWAY';
+            this.beingAbducted = false;
+            this.carriedBy = null;
+            // Pick random dart direction
+            const angle = rng() * Math.PI * 2;
+            this.vx = Math.cos(angle) * DEEP_ONE_CFG.dartSpeed;
+            this.vy = Math.sin(angle) * DEEP_ONE_CFG.dartSpeed;
+        }
+    }
+
+    /**
+     * Monolith class. Lovecraftian obelisk on the sea bottom.
+     * Has HP, damage states, and can be repaired by Deep Ones.
+     */
+    class Monolith extends Entity {
+        constructor(x, y) {
+            super(x, y, MONOLITH_CFG);
+            this.hp = MONOLITH_CFG.maxHP;
+            this.maxHP = MONOLITH_CFG.maxHP;
+            this.damageState = 0; // 0=undamaged, 1=cracked, 2=heavily damaged
+        }
+        takeDamage(amount) {
+            this.hp = Math.max(0, this.hp - amount);
+            this.damageState = this.getDamageState();
+            this.flashTimer = TIMING.hitFlashFrames;
+        }
+        repair(amount) {
+            this.hp = Math.min(this.maxHP, this.hp + amount);
+            this.damageState = this.getDamageState();
+        }
+        getDamageState() {
+            const pct = this.hp / this.maxHP;
+            if (pct > 0.66) return 0;  // undamaged
+            if (pct > 0.33) return 1;  // cracked
+            return 2;                   // heavily damaged
+        }
+    }
+
+    /**
+     * Abductor class. Flying enemy that seeks out Deep Ones, grabs them,
+     * and ascends to the surface to mutate them. If no targets are available,
+     * drifts in a sinusoidal pattern.
+     * FSM states: SEEKING, GRABBING, ASCENDING, MUTATING, DRIFTING
+     */
+    class Abductor extends Entity {
+        constructor(x, y, speedMultiplier) {
+            super(x, y, ENEMY_CFG.abductor);
+            this.type = 'abductor';
+            this.speedMultiplier = speedMultiplier || 1;
+            this.state = 'SEEKING';
+            this.target = null;         // reference to targeted DeepOne
+            this.grabTimer = 0;         // frames spent in GRABBING state
+            this.shouldMutate = false;  // flag for game code to create Mutant
+            // Drifting state
+            this.driftAngle = rng() * Math.PI * 2;
+            this.driftTimer = 0;
+        }
+        update(dt, deepOnes, monolith, player) {
+            switch (this.state) {
+                case 'SEEKING': {
+                    if (!this.target || !this.target.alive || this.target.beingAbducted) {
+                        this.target = null;
+                        this.selectTarget(deepOnes);
+                    }
+                    if (!this.target) {
+                        this.state = 'DRIFTING';
+                        break;
+                    }
+                    // Move toward target Deep One
+                    const dx = this.target.x - this.x;
+                    const dy = this.target.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const speed = ENEMY_CFG.abductor.speed * this.speedMultiplier;
+                    if (dist > 4) {
+                        this.vx = (dx / dist) * speed;
+                        this.vy = (dy / dist) * speed;
+                        this.x += this.vx * dt;
+                        this.y += this.vy * dt;
+                    } else {
+                        // Reached target — start grabbing
+                        this.state = 'GRABBING';
+                        this.grabTimer = 0;
+                    }
+                    break;
+                }
+                case 'GRABBING': {
+                    this.grabTimer += dt;
+                    if (this.grabTimer >= 4) {
+                        // Attach Deep One
+                        if (this.target && this.target.alive) {
+                            this.target.startAbduction(this);
+                            this.state = 'ASCENDING';
+                        } else {
+                            // Target died during grab — seek new one
+                            this.target = null;
+                            this.state = 'SEEKING';
+                        }
+                    }
+                    break;
+                }
+                case 'ASCENDING': {
+                    // Move upward toward sea surface
+                    const carrySpeed = ENEMY_CFG.abductor.carrySpeed;
+                    this.vy = -carrySpeed;
+                    this.vx = 0;
+                    this.y += this.vy * dt;
+                    // Deep One follows Abductor position
+                    if (this.target && this.target.alive) {
+                        this.target.x = this.x;
+                        this.target.y = this.y + this.h;
+                    }
+                    // Check if reached surface
+                    if (this.y <= SEA_SURFACE_Y) {
+                        this.y = SEA_SURFACE_Y;
+                        this.state = 'MUTATING';
+                        this.shouldMutate = true;
+                    }
+                    break;
+                }
+                case 'MUTATING': {
+                    // Flag is set — game code handles Mutant creation and cleanup
+                    break;
+                }
+                case 'DRIFTING': {
+                    // Sinusoidal drift pattern (like a Drifter)
+                    this.driftTimer += dt;
+                    const driftSpeed = ENEMY_CFG.abductor.speed * this.speedMultiplier * 0.5;
+                    this.vx = Math.cos(this.driftAngle) * driftSpeed;
+                    this.vy = Math.sin(this.driftAngle) * driftSpeed * 0.5 +
+                              Math.sin(this.driftTimer * 0.05) * 0.3;
+                    this.x += this.vx * dt;
+                    this.y += this.vy * dt;
+                    // Clamp to playable area
+                    if (this.y < SEA_SURFACE_Y) this.y = SEA_SURFACE_Y;
+                    if (this.y > SEA_BOTTOM_Y - this.h) this.y = SEA_BOTTOM_Y - this.h;
+                    this.x = wrapPosition(this.x, WORLD_W);
+                    // Slowly rotate drift angle
+                    this.driftAngle += 0.01 * dt;
+                    // Check if a Deep One becomes available
+                    if (deepOnes && deepOnes.some(d => d.alive && !d.targeted && !d.beingAbducted)) {
+                        this.state = 'SEEKING';
+                    }
+                    break;
+                }
+            }
+            // Wrap X position
+            this.x = wrapPosition(this.x, WORLD_W);
+            this.updateAnimation(dt);
+        }
+        selectTarget(deepOnes) {
+            if (!deepOnes) return;
+            let nearest = null;
+            let nearestDist = Infinity;
+            for (let i = 0; i < deepOnes.length; i++) {
+                const d = deepOnes[i];
+                if (!d.alive || d.targeted || d.beingAbducted) continue;
+                const dx = Math.abs(this.x - d.x);
+                const wrappedDx = Math.min(dx, WORLD_W - dx);
+                const dy = this.y - d.y;
+                const dist = Math.sqrt(wrappedDx * wrappedDx + dy * dy);
+                if (dist < nearestDist) {
+                    nearestDist = dist;
+                    nearest = d;
+                }
+            }
+            if (nearest) {
+                this.target = nearest;
+                nearest.targeted = true;
+            }
+        }
+        releaseDeepOne() {
+            if (this.target && this.target.alive) {
+                this.target.release();
+                this.target.targeted = false;
+            }
+            this.target = null;
+        }
+        kill() {
+            // Release carried Deep One on destruction
+            if (this.target) {
+                if (this.target.alive && this.target.beingAbducted) {
+                    this.target.release();
+                }
+                this.target.targeted = false;
+                this.target = null;
+            }
+            this.alive = false;
+        }
+    }
+
+    /**
+     * Crab class. Ground-based enemy that marches along the sea bottom
+     * toward the Monolith and attacks it on contact.
+     * FSM states: MARCHING, ATTACKING, QUEUED
+     */
+    class Crab extends Entity {
+        constructor(x, y, speedMultiplier) {
+            super(x, y, ENEMY_CFG.crab);
+            this.type = 'crab';
+            this.speedMultiplier = speedMultiplier || 1;
+            this.state = 'MARCHING';
+            this.attackPhase = Math.random() * Math.PI * 2; // unique vertical bob phase
+        }
+        update(dt, monolith, attackingCrabCount) {
+            switch (this.state) {
+                case 'MARCHING': {
+                    // Move along sea bottom toward Monolith x-position
+                    this.y = SEA_BOTTOM_Y - this.h;
+                    if (monolith && monolith.alive) {
+                        const targetX = monolith.x + monolith.w / 2 - this.w / 2;
+                        const dx = targetX - this.x;
+                        const dist = Math.abs(dx);
+                        const speed = ENEMY_CFG.crab.speed * this.speedMultiplier;
+
+                        if (dist > this.w / 2) {
+                            this.vx = Math.sign(dx) * speed;
+                            this.x += this.vx * dt;
+                        } else {
+                            // Reached Monolith — check if we can attack or must queue
+                            if (attackingCrabCount < THREAT_CFG.maxCrabsAttacking) {
+                                this.state = 'ATTACKING';
+                                playSound('monolithAttack');
+                            } else {
+                                this.state = 'QUEUED';
+                            }
+                        }
+                    }
+                    break;
+                }
+                case 'ATTACKING': {
+                    // Position on monolith center, bob up and down
+                    if (monolith && monolith.alive) {
+                        this.x = monolith.x + monolith.w / 2 - this.w / 2;
+                        this.attackPhase += 0.06 * dt;
+                        // Bob vertically along the monolith face
+                        const bobRange = monolith.h - this.h - 4;
+                        const bobOffset = (Math.sin(this.attackPhase) * 0.5 + 0.5) * bobRange;
+                        this.y = monolith.y + 2 + bobOffset;
+                        monolith.takeDamage(ENEMY_CFG.crab.damagePerFrame * dt);
+                    }
+                    break;
+                }
+                case 'QUEUED': {
+                    // Wait at queue distance from Monolith
+                    this.y = SEA_BOTTOM_Y - this.h;
+                    if (monolith && monolith.alive) {
+                        const targetX = monolith.x + monolith.w / 2 - this.w / 2;
+                        const dx = targetX - this.x;
+                        const queueX = targetX - Math.sign(dx) * THREAT_CFG.crabQueueDistance;
+                        const qdx = queueX - this.x;
+                        const speed = ENEMY_CFG.crab.speed * this.speedMultiplier;
+
+                        if (Math.abs(qdx) > 2) {
+                            this.vx = Math.sign(qdx) * speed;
+                            this.x += this.vx * dt;
+                        } else {
+                            this.vx = 0;
+                        }
+
+                        // Check if a slot opened up
+                        if (attackingCrabCount < THREAT_CFG.maxCrabsAttacking) {
+                            this.state = 'MARCHING';
+                        }
+                    }
+                    break;
+                }
+            }
+            this.x = wrapPosition(this.x, WORLD_W);
+            this.updateAnimation(dt);
+        }
+    }
+
+    /**
+     * Pursuer class. Aggressive enemy that chases the player and
+     * periodically fires projectiles.
+     * FSM states: CHASING, FIRING
+     */
+    class Pursuer extends Entity {
+        constructor(x, y, speedMultiplier, fireRateMult) {
+            super(x, y, ENEMY_CFG.pursuer);
+            this.type = 'pursuer';
+            this.speedMultiplier = speedMultiplier || 1;
+            this.fireRateMult = fireRateMult || 1;
+            this.state = 'CHASING';
+            this.fireTimer = 0;     // frames spent in FIRING state
+            this.shouldFire = false; // flag for game code to spawn projectile
+        }
+        update(dt, playerX, playerY) {
+            switch (this.state) {
+                case 'CHASING': {
+                    // Move toward player using shortest path with world wrap
+                    let dx = playerX - this.x;
+                    const dy = playerY - this.y;
+                    // Account for world wrap — take shortest path
+                    if (dx > WORLD_W / 2) dx -= WORLD_W;
+                    if (dx < -WORLD_W / 2) dx += WORLD_W;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const speed = Math.min(
+                        ENEMY_CFG.pursuer.baseSpeed * this.speedMultiplier,
+                        ENEMY_CFG.pursuer.maxSpeed
+                    );
+                    if (dist > 1) {
+                        this.vx = (dx / dist) * speed;
+                        this.vy = (dy / dist) * speed;
+                    }
+                    this.x += this.vx * dt;
+                    this.y += this.vy * dt;
+                    // Clamp to playable area
+                    if (this.y < SEA_SURFACE_Y) this.y = SEA_SURFACE_Y;
+                    if (this.y > SEA_BOTTOM_Y - this.h) this.y = SEA_BOTTOM_Y - this.h;
+                    // Fire chance check
+                    const effectiveFireChance = Math.min(
+                        ENEMY_CFG.pursuer.fireChance * this.fireRateMult,
+                        ENEMY_CFG.pursuer.maxFireChance
+                    );
+                    if (rng() < effectiveFireChance) {
+                        this.state = 'FIRING';
+                        this.fireTimer = 0;
+                        this.shouldFire = false;
+                    }
+                    break;
+                }
+                case 'FIRING': {
+                    // Brief pause then fire
+                    this.fireTimer += dt;
+                    if (this.fireTimer >= 4) {
+                        this.shouldFire = true;
+                        this.state = 'CHASING';
+                    }
+                    break;
+                }
+            }
+            this.x = wrapPosition(this.x, WORLD_W);
+            this.updateAnimation(dt);
+        }
+    }
+
+    /**
+     * Drifter class. Passive enemy that floats through the water in
+     * semi-random patterns with sinusoidal wobble.
+     * FSM state: DRIFTING
+     */
+    class Drifter extends Entity {
+        constructor(x, y, speedMultiplier) {
+            super(x, y, ENEMY_CFG.drifter);
+            this.type = 'drifter';
+            this.speedMultiplier = speedMultiplier || 1;
+            this.state = 'DRIFTING';
+            // Pick initial random direction
+            const angle = rng() * Math.PI * 2;
+            this.dirX = Math.cos(angle);
+            this.dirY = Math.sin(angle);
+            // Direction change timer
+            this.dirChangeTimer = Math.floor(
+                randomRange(ENEMY_CFG.drifter.dirChangeInterval.min,
+                            ENEMY_CFG.drifter.dirChangeInterval.max)
+            );
+            this.wobblePhase = rng() * Math.PI * 2;
+            this.shouldDropMine = false; // flag for game code to spawn mine
+        }
+        update(dt) {
+            const speed = ENEMY_CFG.drifter.speed * this.speedMultiplier;
+
+            // Direction change countdown
+            this.dirChangeTimer -= dt;
+            if (this.dirChangeTimer <= 0) {
+                // Pick new random direction using seeded RNG
+                const angle = rng() * Math.PI * 2;
+                this.dirX = Math.cos(angle);
+                this.dirY = Math.sin(angle);
+                this.dirChangeTimer = Math.floor(
+                    randomRange(ENEMY_CFG.drifter.dirChangeInterval.min,
+                                ENEMY_CFG.drifter.dirChangeInterval.max)
+                );
+            }
+
+            // Apply sinusoidal wobble perpendicular to movement direction
+            this.wobblePhase += 0.08 * dt;
+            const wobbleAmount = Math.sin(this.wobblePhase) * 0.3;
+            // Perpendicular vector to (dirX, dirY) is (-dirY, dirX)
+            const moveX = this.dirX * speed + (-this.dirY) * wobbleAmount;
+            const moveY = this.dirY * speed + this.dirX * wobbleAmount;
+
+            this.x += moveX * dt;
+            this.y += moveY * dt;
+
+            // Clamp to playable area, bounce off boundaries
+            if (this.y < SEA_SURFACE_Y) {
+                this.y = SEA_SURFACE_Y;
+                this.dirY = Math.abs(this.dirY);
+            }
+            if (this.y > SEA_BOTTOM_Y - this.h) {
+                this.y = SEA_BOTTOM_Y - this.h;
+                this.dirY = -Math.abs(this.dirY);
+            }
+
+            // Mine drop chance
+            if (ENEMY_CFG.drifter.bombDropChance && rng() < ENEMY_CFG.drifter.bombDropChance * dt) {
+                this.shouldDropMine = true;
+            }
+
+            // Wrap X position
+            this.x = wrapPosition(this.x, WORLD_W);
+            this.updateAnimation(dt);
+        }
+    }
+
+    /**
+     * Mutant class. Fast, aggressive enemy created when an Abductor
+     * reaches the surface with a Deep One. Chases the player relentlessly
+     * using shortest-path with world wrap. No firing — pure contact threat.
+     */
+    class Mutant extends Entity {
+        constructor(x, y) {
+            super(x, y, ENEMY_CFG.mutant);
+            this.type = 'mutant';
+            this.state = 'CHASING';
+        }
+        update(dt, playerX, playerY) {
+            // Chase player using shortest-path with world wrap
+            let dx = playerX - this.x;
+            const dy = playerY - this.y;
+            // Account for world wrap — take shortest path
+            if (dx > WORLD_W / 2) dx -= WORLD_W;
+            if (dx < -WORLD_W / 2) dx += WORLD_W;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const speed = ENEMY_CFG.mutant.speed;
+            if (dist > 1) {
+                this.vx = (dx / dist) * speed;
+                this.vy = (dy / dist) * speed;
+            }
+            this.x += this.vx * dt;
+            this.y += this.vy * dt;
+            // Clamp to playable area
+            if (this.y < SEA_SURFACE_Y) this.y = SEA_SURFACE_Y;
+            if (this.y > SEA_BOTTOM_Y - this.h) this.y = SEA_BOTTOM_Y - this.h;
+            // Wrap X position
+            this.x = wrapPosition(this.x, WORLD_W);
+            this.updateAnimation(dt);
+        }
+    }
+
+    // ── Game State ──────────────────────────────────────────────
+
+    // Valid state transitions map
+    const VALID_TRANSITIONS = {
+        'START_SCREEN':     ['PLAYING'],
+        'PLAYING':          ['PAUSED', 'DEATH_PAUSE', 'LEVEL_TRANSITION', 'GAME_OVER'],
+        'PAUSED':           ['PLAYING'],
+        'DEATH_PAUSE':      ['PLAYING', 'GAME_OVER'],
+        'LEVEL_TRANSITION': ['PLAYING'],
+        'GAME_OVER':        ['START_SCREEN', 'PLAYING'],
+    };
+
+    const state = {
+        mode: 'START_SCREEN',
+        level: 1,
+        score: 0,
+        highScore: 0,
+        lives: PLAYER_CFG.startLives,
+        bombs: BOMB_CFG.startCount,
+        dt: 0,
+        lastTime: 0,
+        comboMultiplier: 1,
+        comboTimer: 0,
+        dashCooldownTimer: 0,
+        dashActiveTimer: 0,
+        isDashing: false,
+        enemiesRemaining: 0,
+        enemiesSpawnedThisLevel: 0,
+        deepOnesRemaining: 0,
+        deathTimer: 0,
+        transitionTimer: 0,
+        invincibilityTimer: 0,
+        summaryTimer: 0,
+        damageVignetteTimer: 0,
+        bombFlashTimer: 0,
+        muted: false,
+        volumes: { ...AUDIO_CFG.defaultVolumes },
+        nextExtraLifeScore: SCORE_CFG.extraLifeInterval,
+        pauseStartTime: 0,
+        lossReason: null,
+        stats: {
+            levelsCompleted: 0,
+            enemiesDestroyed: 0,
+            deepOnesSaved: 0,
+            maxCombo: 0,
+            startTime: 0,
+        },
+        accessibility: {
+            reduceShake: false,
+            highContrastMiniMap: false,
+        },
+    };
+
+    /**
+     * Transition to a new game state. Validates the transition is legal
+     * according to the state machine. Illegal transitions are logged
+     * to the console and ignored.
+     */
+    function setState(newMode) {
+        const allowed = VALID_TRANSITIONS[state.mode];
+        if (!allowed || !allowed.includes(newMode)) {
+            console.warn(`Illegal state transition: ${state.mode} → ${newMode}`);
+            return;
+        }
+        state.mode = newMode;
+    }
+
+    // ── Entity Arrays & Object Pools (Task 6.5) ────────────────
+
+    let player = null;
+    let monolith = null;
+    let enemies = [];
+    let deepOnes = [];
+    let mines = [];  // Drifter-dropped mines
+    let tentacles = []; // Static tentacle obstacles
+
+    let playerProjectilePool = new ObjectPool(
+        () => new Projectile({
+            w: 8, h: 4,
+            hb: { x: 0, y: 0, w: 8, h: 4 },
+            maxLifetime: PLAYER_CFG.shotLifetime,
+            animFrames: 1,
+            animInterval: 1,
+        }),
+        POOL_SIZES.playerProjectiles
+    );
+
+    let enemyProjectilePool = new ObjectPool(
+        () => new Projectile({
+            w: 6, h: 6,
+            hb: { x: 0, y: 0, w: 6, h: 6 },
+            maxLifetime: 120,
+            animFrames: 1,
+            animInterval: 1,
+        }),
+        POOL_SIZES.enemyProjectiles
+    );
+
+    let particlePool = new ObjectPool(
+        () => new Particle(),
+        POOL_SIZES.particles
+    );
+
+    // ── Input Manager (Task 6.3) ────────────────────────────────
+
+    const input = {
+        left: false, right: false, up: false, down: false,
+        fire: false, dash: false, bomb: false, pause: false, mute: false, quit: false,
+        fireBuffered: false,
+
+        _keys: {},
+        _gamepadIndex: null,
+
+        // Track previous frame state for edge-detection (single-press actions)
+        _prevPause: false,
+        _prevMute: false,
+        _prevQuit: false,
+        _prevFire: false,
+        _prevBomb: false,
+        _prevDash: false,
+
+        /**
+         * Poll all input sources (keyboard + gamepad) and merge into
+         * the action booleans. Called once per frame before update().
+         */
+        poll() {
+            const keys = this._keys;
+
+            // ── Keyboard state ──
+            const kbLeft  = !!(keys['ArrowLeft']  || keys['KeyA']);
+            const kbRight = !!(keys['ArrowRight'] || keys['KeyD']);
+            const kbUp    = !!(keys['ArrowUp']    || keys['KeyW']);
+            const kbDown  = !!(keys['ArrowDown']  || keys['KeyS']);
+            const kbFire  = !!(keys['Space']      || keys['KeyZ']);
+            const kbBomb  = !!(keys['KeyX']       || keys['KeyB']);
+            const kbDash  = !!(keys['ShiftLeft']  || keys['ShiftRight'] || keys['KeyC']);
+            const kbPause = !!(keys['Escape']     || keys['KeyP']);
+            const kbMute  = !!(keys['KeyM']);
+            const kbQuit  = !!(keys['KeyQ']);
+
+            // ── Gamepad state ──
+            let gpLeft = false, gpRight = false, gpUp = false, gpDown = false;
+            let gpFire = false, gpDash = false, gpBomb = false, gpPause = false;
+
+            if (this._gamepadIndex !== null) {
+                try {
+                    const gamepads = navigator.getGamepads();
+                    const gp = gamepads[this._gamepadIndex];
+                    if (gp) {
+                        // D-pad (buttons 12-15)
+                        gpUp    = gp.buttons[12] ? gp.buttons[12].pressed : false;
+                        gpDown  = gp.buttons[13] ? gp.buttons[13].pressed : false;
+                        gpLeft  = gp.buttons[14] ? gp.buttons[14].pressed : false;
+                        gpRight = gp.buttons[15] ? gp.buttons[15].pressed : false;
+
+                        // Left stick (axis 0 = horizontal, axis 1 = vertical)
+                        if (gp.axes.length >= 2) {
+                            const deadzone = 0.3;
+                            if (gp.axes[0] < -deadzone) gpLeft = true;
+                            if (gp.axes[0] >  deadzone) gpRight = true;
+                            if (gp.axes[1] < -deadzone) gpUp = true;
+                            if (gp.axes[1] >  deadzone) gpDown = true;
+                        }
+
+                        // Face buttons: A(0)=fire, B(1)=dash, X(2)=bomb, Start(9)=pause
+                        gpFire  = gp.buttons[0] ? gp.buttons[0].pressed : false;
+                        gpDash  = gp.buttons[1] ? gp.buttons[1].pressed : false;
+                        gpBomb  = gp.buttons[2] ? gp.buttons[2].pressed : false;
+                        gpPause = gp.buttons[9] ? gp.buttons[9].pressed : false;
+                    }
+                } catch (e) {
+                    // Gamepad API can throw in some browsers; ignore
+                }
+            }
+
+            // ── Merge all sources ──
+            this.left  = kbLeft  || gpLeft;
+            this.right = kbRight || gpRight;
+            this.up    = kbUp    || gpUp;
+            this.down  = kbDown  || gpDown;
+
+            // For single-press actions, detect rising edge (pressed this frame, not last)
+            const rawFire  = kbFire  || gpFire;
+            const rawBomb  = kbBomb  || gpBomb;
+            const rawDash  = kbDash  || gpDash;
+            const rawPause = kbPause || gpPause;
+            const rawMute  = kbMute;
+            const rawQuit  = kbQuit;
+
+            this.fire  = rawFire  && !this._prevFire;
+            this.bomb  = rawBomb  && !this._prevBomb;
+            this.dash  = rawDash  && !this._prevDash;
+            this.pause = rawPause && !this._prevPause;
+            this.mute  = rawMute  && !this._prevMute;
+            this.quit  = rawQuit  && !this._prevQuit;
+
+            // Fire buffering: keep true if held (continuous for fire)
+            this.fireBuffered = rawFire;
+
+            // Store for next frame edge detection
+            this._prevFire  = rawFire;
+            this._prevBomb  = rawBomb;
+            this._prevDash  = rawDash;
+            this._prevPause = rawPause;
+            this._prevMute  = rawMute;
+            this._prevQuit  = rawQuit;
+        },
+
+        /**
+         * Set up keyboard event listeners. Tracks key state by code.
+         * Clears all keys on window blur to prevent stuck keys.
+         */
+        initKeyboard() {
+            window.addEventListener('keydown', (e) => {
+                this._keys[e.code] = true;
+                // Prevent default for game keys to avoid scrolling etc.
+                if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+                     'Space', 'Escape'].includes(e.code)) {
+                    e.preventDefault();
+                }
+            });
+            window.addEventListener('keyup', (e) => {
+                this._keys[e.code] = false;
+            });
+            // Clear all keys when window loses focus to prevent stuck keys
+            window.addEventListener('blur', () => {
+                this._keys = {};
+            });
+            // Also clear on visibility change (tab switch)
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) this._keys = {};
+            });
+        },
+
+        /**
+         * Set up gamepad connection/disconnection listeners.
+         */
+        initGamepad() {
+            window.addEventListener('gamepadconnected', (e) => {
+                this._gamepadIndex = e.gamepad.index;
+            });
+            window.addEventListener('gamepaddisconnected', (e) => {
+                if (this._gamepadIndex === e.gamepad.index) {
+                    this._gamepadIndex = null;
+                }
+            });
+        },
+    };
+
+    // ── Camera System ───────────────────────────────────────────
+
+    const camera = {
+        x: 0, y: 0,
+        targetX: 0, targetY: 0,
+        lookAheadX: 0,
+        shakeX: 0, shakeY: 0,
+        shakeAmplitude: 0,
+        bombFreezeFrames: 0,
+    };
+
+    function updateCamera(dt) {
+        if (!player) return;
+        if (camera.bombFreezeFrames > 0) {
+            camera.bombFreezeFrames -= dt;
+            return;
+        }
+        const facingDir = player.facingRight ? 1 : -1;
+        const speedLookAhead = Math.abs(player.vx) * CAMERA_CFG.lookAheadSpeedScale;
+        const targetLookAhead = facingDir * (CAMERA_CFG.lookAheadBase + speedLookAhead);
+        camera.lookAheadX += (targetLookAhead - camera.lookAheadX) * CAMERA_CFG.lookAheadTransitionSpeed * dt;
+
+        // Target camera position centered on player with look-ahead
+        let targetX = player.x + player.w / 2 - W / 2 + camera.lookAheadX;
+        camera.targetY = player.y + player.h / 2 - H / 2 + CAMERA_CFG.verticalBias;
+        camera.targetY = Math.max(0, Math.min(SEA_BOTTOM_Y + GROUND_H - H, camera.targetY));
+
+        // Smooth wrap-aware lerp for X
+        let dx = targetX - camera.x;
+        // Take shortest path across the world wrap seam
+        if (dx > WORLD_W / 2) dx -= WORLD_W;
+        if (dx < -WORLD_W / 2) dx += WORLD_W;
+
+        const effectiveLerp = (player.isDashing ? CAMERA_CFG.lerpSpeed * 3 : CAMERA_CFG.lerpSpeed);
+        camera.x += dx * effectiveLerp * dt;
+        camera.y += (camera.targetY - camera.y) * effectiveLerp * dt;
+
+        // Keep camera X in [0, WORLD_W)
+        camera.x = wrapPosition(camera.x, WORLD_W);
+
+        if (camera.shakeAmplitude > 0.5) {
+            const eff = getEffectiveShakeIntensity(camera.shakeAmplitude, state.accessibility);
+            camera.shakeX = (Math.random() - 0.5) * 2 * eff;
+            camera.shakeY = (Math.random() - 0.5) * 2 * eff;
+            camera.shakeAmplitude *= CAMERA_CFG.shakeDecay;
+        } else {
+            camera.shakeX = 0;
+            camera.shakeY = 0;
+            camera.shakeAmplitude = 0;
+        }
+    }
+
+    function triggerShake(intensity) {
+        camera.shakeAmplitude = Math.max(camera.shakeAmplitude, intensity);
+    }
+
+    // ── Procedural Background ───────────────────────────────────
+
+    // Generate static ground features once
+    const groundFeatures = [];
+    const bgStars = []; // distant bioluminescent dots for far layer
+    const fishSchools = []; // background fish schools
+    let causticPhase = 0;
+    const bubbles = [];
+
+    // Terrain heightmap for ocean floor (Defender-style rolling mountains)
+    const TERRAIN_RESOLUTION = 8; // pixels per terrain sample (coarser = smoother)
+    const TERRAIN_SAMPLES = Math.ceil(WORLD_W / TERRAIN_RESOLUTION) + 1;
+    let terrainHeights = []; // array of Y values (top of terrain at each sample)
+
+    /**
+     * Generate smooth rolling terrain using fixed-seed sine layers.
+     * Produces gentle slopes and broad mountains like Defender.
+     */
+    function generateTerrain() {
+        terrainHeights = [];
+        // Fixed seed offsets for deterministic terrain (no per-sample rng calls)
+        const seed1 = rng() * 1000;
+        const seed2 = rng() * 1000;
+        const seed3 = rng() * 1000;
+
+        for (let i = 0; i < TERRAIN_SAMPLES; i++) {
+            const x = i * TERRAIN_RESOLUTION;
+            // Base height
+            let h = SEA_BOTTOM_Y;
+            // Large broad mountains (very low frequency)
+            h -= (Math.sin(x * 0.0015 + seed1) * 0.5 + 0.5) * 35;
+            // Medium rolling hills
+            h -= (Math.sin(x * 0.005 + seed2) * 0.5 + 0.5) * 15;
+            // Gentle variation
+            h -= (Math.sin(x * 0.015 + seed3) * 0.5 + 0.5) * 5;
+            // Clamp
+            h = Math.max(SEA_BOTTOM_Y - 50, Math.min(SEA_BOTTOM_Y + 2, h));
+            terrainHeights.push(h);
+        }
+        // Ensure seamless wrap: blend last few samples toward first
+        const blendZone = 20;
+        for (let i = 0; i < blendZone; i++) {
+            const t = i / blendZone;
+            const endIdx = TERRAIN_SAMPLES - blendZone + i;
+            terrainHeights[endIdx] = terrainHeights[endIdx] * (1 - t) + terrainHeights[i] * t;
+        }
+    }
+
+    /** Get terrain height at a given world X position (interpolated). */
+    function getTerrainHeight(worldX) {
+        const wrapped = wrapPosition(worldX, WORLD_W);
+        const idx = wrapped / TERRAIN_RESOLUTION;
+        const i0 = Math.floor(idx) % TERRAIN_SAMPLES;
+        const i1 = (i0 + 1) % TERRAIN_SAMPLES;
+        const t = idx - Math.floor(idx);
+        return terrainHeights[i0] * (1 - t) + terrainHeights[i1] * t;
+    }
+
+    function generateBackground() {
+        groundFeatures.length = 0;
+        bgStars.length = 0;
+
+        // Generate smooth terrain
+        generateTerrain();
+
+        // Place a few ruins and houses at fixed aspect ratios, varied sizes
+        const structureCount = 6 + Math.floor(rng() * 4); // 6-9 structures total
+        // Base dimensions define the aspect ratio (never distorted)
+        const RUIN_BASE_W = 20, RUIN_BASE_H = 28; // aspect ratio 5:7
+        const HOUSE_BASE_W = 16, HOUSE_BASE_H = 14; // aspect ratio 8:7
+        for (let i = 0; i < structureCount; i++) {
+            const type = rng() < 0.5 ? 'ruin' : 'house';
+            const x = rng() * WORLD_W;
+            let w, h;
+            if (type === 'ruin') {
+                const scale = 0.8 + rng() * 0.8; // 0.8× to 1.6× base size
+                w = Math.round(RUIN_BASE_W * scale);
+                h = Math.round(RUIN_BASE_H * scale);
+            } else {
+                const scale = 0.8 + rng() * 0.8;
+                w = Math.round(HOUSE_BASE_W * scale);
+                h = Math.round(HOUSE_BASE_H * scale);
+            }
+            const terrainY = getTerrainHeight(x);
+            groundFeatures.push({
+                type, x, y: terrainY - h, w, h,
+                color: type === 'house' ? '#2a3a4a' : '#3a4a5a',
+            });
+        }
+
+        // Far layer bioluminescent dots (each with unique parallax depth)
+        for (let i = 0; i < 80; i++) {
+            bgStars.push({
+                x: rng() * WORLD_W,
+                y: SEA_SURFACE_Y + rng() * (SEA_BOTTOM_Y - SEA_SURFACE_Y),
+                r: 1 + rng() * 2,
+                phase: rng() * Math.PI * 2,
+                speed: 0.01 + rng() * 0.02,
+                hue: 160 + rng() * 60,
+                parallax: 0.15 + rng() * 0.35, // each dot scrolls at its own depth (0.15–0.5)
+                driftX: (rng() - 0.5) * 0.02,  // slow horizontal drift
+                driftY: (rng() - 0.5) * 0.01,  // slow vertical drift
+            });
+        }
+
+        // Fish schools (small groups swimming in the background)
+        fishSchools.length = 0;
+        const schoolCount = 5 + Math.floor(rng() * 4); // 5-8 schools
+        for (let i = 0; i < schoolCount; i++) {
+            const fishCount = 4 + Math.floor(rng() * 6); // 4-9 fish per school
+            const baseX = rng() * WORLD_W;
+            const baseY = SEA_SURFACE_Y + 30 + rng() * (SEA_BOTTOM_Y - SEA_SURFACE_Y - 80);
+            const dir = rng() < 0.5 ? 1 : -1; // swimming direction
+            const speed = 0.3 + rng() * 0.5; // school speed
+            const parallax = 0.2 + rng() * 0.3; // depth layer
+            const hue = 180 + rng() * 40; // blue-green tint
+            const fish = [];
+            for (let f = 0; f < fishCount; f++) {
+                fish.push({
+                    offsetX: (rng() - 0.5) * 30, // spread within school
+                    offsetY: (rng() - 0.5) * 16,
+                    size: 2 + rng() * 2,
+                    wobblePhase: rng() * Math.PI * 2,
+                    wobbleSpeed: 0.05 + rng() * 0.03,
+                });
+            }
+            fishSchools.push({ baseX, baseY, dir, speed, parallax, hue, fish });
+        }
+    }
+
+    // ── Scoring & Damage ────────────────────────────────────────
+
+    function awardPoints(basePoints) {
+        const points = basePoints * state.comboMultiplier;
+        state.score += points;
+        state.comboTimer = SCORE_CFG.comboWindow;
+        state.comboMultiplier = Math.min(state.comboMultiplier + 1, SCORE_CFG.comboMultiplierMax);
+        if (state.comboMultiplier > state.stats.maxCombo) {
+            state.stats.maxCombo = state.comboMultiplier;
+        }
+        // Extra life check
+        if (state.score >= state.nextExtraLifeScore && state.lives < PLAYER_CFG.maxLives) {
+            state.lives++;
+            state.nextExtraLifeScore += SCORE_CFG.extraLifeInterval;
+        }
+        if (state.score > state.highScore) {
+            state.highScore = state.score;
+        }
+    }
+
+    function resetCombo() {
+        state.comboMultiplier = 1;
+        state.comboTimer = 0;
+    }
+
+    function spawnExplosion(x, y, color, count) {
+        for (let i = 0; i < count; i++) {
+            const p = particlePool.acquire(x, y,
+                (Math.random() - 0.5) * 3,
+                (Math.random() - 0.5) * 3
+            );
+            if (p) {
+                p.lifetime = 15 + Math.random() * 20;
+                p.maxLifetime = p.lifetime;
+                p.color = color;
+                p.alpha = 1;
+                p.scale = 1 + Math.random();
+            }
+        }
+    }
+
+    function damageEnemy(enemy) {
+        const wasCarrying = enemy.type === 'abductor' && enemy.target && enemy.target.alive && enemy.target.beingAbducted;
+        if (wasCarrying) {
+            enemy.releaseDeepOne();
+            state.stats.deepOnesSaved++;
+            awardPoints(SCORE_CFG.rescueBonus);
+            playSound('deepOneRescued');
+        }
+        const cfg = ENEMY_CFG[enemy.type];
+        if (cfg) awardPoints(cfg.points);
+        state.stats.enemiesDestroyed++;
+        spawnExplosion(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, '#44ff66', 16);
+        playSound('enemyDeath');
+        enemy.kill();
+    }
+
+    function playerHit() {
+        if (!player || !player.alive) return;
+        if (player.invincibilityTimer > 0 || player.isDashing) return;
+        state.lives--;
+        resetCombo();
+        state.damageVignetteTimer = TIMING.damageVignetteFrames;
+        triggerShake(TIMING.screenShakeIntensity);
+        spawnExplosion(player.x + player.w / 2, player.y + player.h / 2, '#4fc3f7', 12);
+        player.alive = false;
+        state.deathTimer = TIMING.deathPauseFrames;
+        playSound('playerDeath');
+        setState('DEATH_PAUSE');
+    }
+
+    function detonateBomb() {
+        if (state.bombs <= 0) return;
+        state.bombs--;
+        state.bombFlashTimer = TIMING.bombFlashFrames;
+        camera.bombFreezeFrames = 2;
+        triggerShake(TIMING.bombShakeIntensity);
+        // Destroy all enemies in viewport
+        for (let i = 0; i < enemies.length; i++) {
+            const e = enemies[i];
+            if (!e.alive) continue;
+            if (isInViewport(e.x, e.w, camera.x, W, WORLD_W)) {
+                damageEnemy(e);
+            }
+        }
+        // Destroy enemy projectiles in viewport
+        enemyProjectilePool.forEach((p) => {
+            if (isInViewport(p.x, p.w, camera.x, W, WORLD_W)) {
+                p.kill();
+            }
+        });
+        // Destroy mines in viewport
+        for (let i = mines.length - 1; i >= 0; i--) {
+            if (isInViewport(mines[i].x, MINE_CFG.w, camera.x, W, WORLD_W)) {
+                spawnExplosion(mines[i].x + MINE_CFG.w / 2, mines[i].y + MINE_CFG.h / 2, '#44ff66', 4);
+                mines.splice(i, 1);
+            }
+        }
+    }
+
+    // ── Enemy Spawning ──────────────────────────────────────────
+
+    function spawnEnemyOfType(type, speedMult, fireRateMult) {
+        const pos = findSafeSpawnPosition(
+            player ? player.x : WORLD_W / 2,
+            player ? player.y : H / 2,
+            enemies, SPAWN_CFG.minDistFromPlayer, WORLD_W
+        );
+        let e;
+        switch (type) {
+            case 'abductor':
+                e = new Abductor(pos.x, pos.y, speedMult);
+                break;
+            case 'crab':
+                e = new Crab(pos.x, SEA_BOTTOM_Y - ENEMY_CFG.crab.h, speedMult);
+                break;
+            case 'pursuer':
+                e = new Pursuer(pos.x, pos.y, speedMult, fireRateMult);
+                break;
+            case 'drifter':
+                e = new Drifter(pos.x, pos.y, speedMult);
+                break;
+        }
+        if (e) enemies.push(e);
+    }
+
+    // ── Level Initialization ────────────────────────────────────
+
+    function initLevel(level) {
+        enemies = [];
+        deepOnes = [];
+        mines = [];
+        tentacles = [];
+        playerProjectilePool.releaseAll();
+        enemyProjectilePool.releaseAll();
+        particlePool.releaseAll();
+
+        // Reset or create Monolith at center of world
+        if (!monolith) {
+            monolith = new Monolith(WORLD_W / 2 - MONOLITH_CFG.w / 2, SEA_BOTTOM_Y - MONOLITH_CFG.h);
+        } else {
+            monolith.hp = MONOLITH_CFG.maxHP;
+            monolith.damageState = 0;
+            monolith.alive = true;
+        }
+
+        // Spawn Deep Ones evenly across playfield
+        for (let i = 0; i < DEEP_ONE_CFG.count; i++) {
+            const x = (WORLD_W / DEEP_ONE_CFG.count) * i + randomRange(-20, 20);
+            const d = new DeepOne(wrapPosition(x, WORLD_W), SEA_BOTTOM_Y - DEEP_ONE_CFG.h);
+            d.spawnX = d.x;
+            deepOnes.push(d);
+        }
+
+        // Spawn tentacle obstacles (anchored behind ocean floor)
+        const tentacleCount = Math.round(randomRange(TENTACLE_CFG.count.min, TENTACLE_CFG.count.max));
+        for (let i = 0; i < tentacleCount; i++) {
+            const x = rng() * WORLD_W;
+            const h = randomRange(TENTACLE_CFG.minHeight, TENTACLE_CFG.maxHeight);
+            const baseY = getTerrainHeight(x);
+            tentacles.push({
+                x: x,
+                baseY: baseY,          // anchor point (terrain surface)
+                h: h,
+                w: TENTACLE_CFG.w,
+                phase: rng() * Math.PI * 2,
+                // Rise state: how much of the tentacle is visible (0 = hidden, 1 = fully risen)
+                riseAmount: 0,
+                riseDir: 1,            // 1 = rising, -1 = sinking
+                pauseTimer: 0,         // ms remaining at top/bottom pause
+                riseDelay: rng() * 5000, // stagger start times
+            });
+        }
+
+        // Spawn enemies
+        const speedMult = getScaledValue(SCALING.speedMultiplier, level);
+        const fireMult = getScaledValue(SCALING.fireRateMult, level);
+        const abCount = Math.round(getScaledValue(SCALING.abductorCount, level));
+        const crCount = Math.round(getScaledValue(SCALING.crabCount, level));
+        const puCount = Math.round(getScaledValue(SCALING.pursuerCount, level));
+        const drCount = Math.round(getScaledValue(SCALING.drifterCount, level));
+
+        for (let i = 0; i < abCount; i++) spawnEnemyOfType('abductor', speedMult, fireMult);
+        for (let i = 0; i < crCount; i++) spawnEnemyOfType('crab', speedMult, fireMult);
+        for (let i = 0; i < puCount; i++) spawnEnemyOfType('pursuer', speedMult, fireMult);
+        for (let i = 0; i < drCount; i++) spawnEnemyOfType('drifter', speedMult, fireMult);
+
+        // Create or respawn player
+        if (!player) {
+            player = new Player(WORLD_W / 4, H / 2);
+        } else {
+            player.alive = true;
+            player.invincibilityTimer = PLAYER_CFG.invincibilityDuration;
+            player.vx = 0;
+            player.vy = 0;
+            player.isDashing = false;
+            player.dashTimer = 0;
+        }
+
+        state.enemiesRemaining = enemies.length;
+        state.enemiesSpawnedThisLevel = enemies.length;
+        state.deepOnesRemaining = deepOnes.length;
+
+        // Snap camera to player (immediate, no lerp)
+        camera.x = player.x + player.w / 2 - W / 2;
+        camera.y = player.y + player.h / 2 - H / 2 + CAMERA_CFG.verticalBias;
+        camera.y = Math.max(0, Math.min(SEA_BOTTOM_Y + GROUND_H - H, camera.y));
+        camera.targetX = camera.x;
+        camera.targetY = camera.y;
+        camera.lookAheadX = 0;
+    }
+
+    // ── Rendering Helpers ───────────────────────────────────────
+
+    /** Convert world X to screen X, accounting for camera and world wrap. */
+    function worldToScreenX(wx) {
+        let rel = wx - camera.x;
+        if (rel < -WORLD_W / 2) rel += WORLD_W;
+        if (rel > WORLD_W / 2) rel -= WORLD_W;
+        return rel + camera.shakeX;
+    }
+
+    function worldToScreenY(wy) {
+        return wy - camera.y + camera.shakeY;
+    }
+
+    /** Draw an entity as a colored rectangle with world-wrap handling. */
+    function drawEntity(e, color) {
+        const sx = worldToScreenX(e.x);
+        const sy = worldToScreenY(e.y);
+        // Hit flash override
+        const c = e.flashTimer > 0 ? '#ffffff' : color;
+        ctx.fillStyle = c;
+        // Draw at primary position
+        if (sx + e.w > 0 && sx < W && sy + e.h > 0 && sy < H) {
+            ctx.fillRect(sx, sy, e.w, e.h);
+        }
+        // Draw wrapped copy if near world edge
+        if (sx < 0) {
+            ctx.fillRect(sx + WORLD_W, sy, e.w, e.h);
+        } else if (sx + e.w > W) {
+            ctx.fillRect(sx - WORLD_W, sy, e.w, e.h);
+        }
+    }
+
+    /**
+     * Draw an enemy using sprite images with glow points overlay.
+     * Falls back to colored rectangle if sprites aren't loaded.
+     * Handles horizontal flipping based on movement direction,
+     * glow point rendering, and abductor carry glow.
+     */
+    function drawEnemy(e, fallbackColor) {
+        const sx = worldToScreenX(e.x);
+        const sy = worldToScreenY(e.y);
+        if (sx + e.w < -50 || sx > W + 50 || sy + e.h < -50 || sy > H + 50) return;
+
+        // Determine facing direction from velocity (default: right)
+        const facingRight = e.vx >= 0;
+
+        // Pick sprite frame
+        const frameKey = e.type + '_' + (e.animFrame + 1); // e.g. 'abductor_1', 'abductor_2'
+        const img = assets[frameKey];
+
+        // Abductor carry glow: pulse light blue outline around non-transparent pixels
+        const isCarrying = e.type === 'abductor' && e.target && e.target.alive && e.target.beingAbducted;
+        if (isCarrying && img && img.complete && img.naturalWidth > 0) {
+            const glowAlpha = 0.5 + Math.sin(Date.now() * 0.01) * 0.3;
+            ctx.save();
+            ctx.globalAlpha = glowAlpha;
+            ctx.shadowColor = '#4fc3f7';
+            ctx.shadowBlur = 8;
+            // Draw the sprite multiple times offset by 1-2px in each direction
+            // to create an outline glow around non-transparent pixels
+            const offsets = [[-2,0],[2,0],[0,-2],[0,2],[-1,-1],[1,-1],[-1,1],[1,1]];
+            for (let o = 0; o < offsets.length; o++) {
+                const ox = offsets[o][0], oy = offsets[o][1];
+                if (!facingRight) {
+                    ctx.save();
+                    ctx.translate(sx + e.w + ox, sy + oy);
+                    ctx.scale(-1, 1);
+                    ctx.drawImage(img, 0, 0, e.w, e.h);
+                    ctx.restore();
+                } else {
+                    ctx.drawImage(img, sx + ox, sy + oy, e.w, e.h);
+                }
+            }
+            ctx.shadowBlur = 0;
+            ctx.globalAlpha = 1;
+            ctx.restore();
+        }
+
+        // Hit flash
+        if (e.flashTimer > 0) {
+            ctx.globalAlpha = 0.7;
+        }
+
+        if (img && img.complete && img.naturalWidth > 0) {
+            ctx.save();
+            if (!facingRight) {
+                ctx.translate(sx + e.w, sy);
+                ctx.scale(-1, 1);
+                ctx.drawImage(img, 0, 0, e.w, e.h);
+            } else {
+                ctx.drawImage(img, sx, sy, e.w, e.h);
+            }
+            ctx.restore();
+
+            // Hit flash white overlay
+            if (e.flashTimer > 0) {
+                ctx.globalCompositeOperation = 'source-atop';
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(sx, sy, e.w, e.h);
+                ctx.globalCompositeOperation = 'source-over';
+            }
+        } else {
+            // Fallback: colored rectangle
+            ctx.fillStyle = e.flashTimer > 0 ? '#ffffff' : fallbackColor;
+            ctx.fillRect(sx, sy, e.w, e.h);
+        }
+
+        ctx.globalAlpha = 1;
+
+        // Draw glow points
+        const glowFrames = ENEMY_GLOW_POINTS[e.type];
+        if (glowFrames) {
+            const frameIdx = Math.min(e.animFrame, glowFrames.length - 1);
+            const points = glowFrames[frameIdx];
+            if (points) {
+                for (let i = 0; i < points.length; i++) {
+                    const p = points[i];
+                    const color = p.color || '#ffeb3b';
+                    // Flip X position if facing left
+                    const px = facingRight ? p.x : (e.w - 1 - p.x);
+                    // Glow: draw a 3×3 soft glow behind, then 1×1 bright pixel
+                    const gx = sx + px;
+                    const gy = sy + p.y;
+                    ctx.globalAlpha = 0.4 + Math.sin(Date.now() * 0.008 + i) * 0.2;
+                    ctx.fillStyle = color;
+                    ctx.fillRect(gx - 1, gy - 1, 3, 3);
+                    ctx.globalAlpha = 1.0;
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(gx, gy, 1, 1);
+                }
+            }
+        }
+    }
+
+    /** Draw the player with a 2-frame animation using sprite images. */
+    function drawPlayer() {
+        if (!player || !player.alive) return;
+        const sx = worldToScreenX(player.x);
+        const sy = worldToScreenY(player.y);
+        // Invincibility flash
+        if (player.invincibilityTimer > 0 && Math.floor(player.invincibilityTimer) % 4 < 2) {
+            ctx.globalAlpha = 0.4;
+        }
+        // Dash trail
+        if (player.isDashing) {
+            ctx.globalAlpha = 0.2;
+            const trailDir = player.facingRight ? -1 : 1;
+            const trailImg = player.animFrame === 0 ? assets.player_1 : assets.player_2;
+            if (trailImg && trailImg.complete && trailImg.naturalWidth > 0) {
+                for (let t = 1; t <= 3; t++) {
+                    ctx.globalAlpha = 0.12 / t;
+                    ctx.save();
+                    if (!player.facingRight) {
+                        ctx.translate(sx + trailDir * t * 10 + player.w, sy);
+                        ctx.scale(-1, 1);
+                        ctx.drawImage(trailImg, 0, 0, player.w, player.h);
+                    } else {
+                        ctx.drawImage(trailImg, sx + trailDir * t * 10, sy, player.w, player.h);
+                    }
+                    ctx.restore();
+                }
+            }
+            ctx.globalAlpha = player.invincibilityTimer > 0 && Math.floor(player.invincibilityTimer) % 4 < 2 ? 0.4 : 1.0;
+        }
+
+        // Pick sprite frame
+        const img = player.animFrame === 0 ? assets.player_1 : assets.player_2;
+
+        if (img && img.complete && img.naturalWidth > 0) {
+            // Draw sprite — flip horizontally if facing left
+            ctx.save();
+            if (!player.facingRight) {
+                ctx.translate(sx + player.w, sy);
+                ctx.scale(-1, 1);
+                ctx.drawImage(img, 0, 0, player.w, player.h);
+            } else {
+                ctx.drawImage(img, sx, sy, player.w, player.h);
+            }
+            ctx.restore();
+        } else {
+            // Fallback: simple colored rectangle while images load
+            ctx.fillStyle = player.flashTimer > 0 ? '#ffffff' : '#4fc3f7';
+            ctx.fillRect(sx, sy, player.w, player.h);
+            // Nose
+            ctx.fillStyle = '#b3e5fc';
+            if (player.facingRight) {
+                ctx.beginPath();
+                ctx.moveTo(sx + player.w, sy + player.h / 2);
+                ctx.lineTo(sx + player.w - 4, sy);
+                ctx.lineTo(sx + player.w - 4, sy + player.h);
+                ctx.fill();
+            } else {
+                ctx.beginPath();
+                ctx.moveTo(sx, sy + player.h / 2);
+                ctx.lineTo(sx + 4, sy);
+                ctx.lineTo(sx + 4, sy + player.h);
+                ctx.fill();
+            }
+        }
+
+        // Hit flash overlay
+        if (player.flashTimer > 0) {
+            ctx.globalCompositeOperation = 'source-atop';
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(sx, sy, player.w, player.h);
+            ctx.globalCompositeOperation = 'source-over';
+        }
+
+        ctx.globalAlpha = 1.0;
+    }
+
+    // ── Game Loop ───────────────────────────────────────────────
+
+    /**
+     * Main update function. Dispatches to the appropriate logic
+     * based on the current game state mode.
+     */
+    function update(dt) {
+        switch (state.mode) {
+            case 'START_SCREEN':
+                // Only check for start input
+                if (input.fire || input.bomb || input.dash) {
+                    initAudio(); // Initialize Web Audio on first user interaction
+                    state.score = 0;
+                    state.level = 1;
+                    state.lives = PLAYER_CFG.startLives;
+                    state.bombs = BOMB_CFG.startCount;
+                    state.comboMultiplier = 1;
+                    state.comboTimer = 0;
+                    state.lossReason = null;
+                    state.nextExtraLifeScore = SCORE_CFG.extraLifeInterval;
+                    state.damageVignetteTimer = 0;
+                    state.bombFlashTimer = 0;
+                    state.stats.levelsCompleted = 0;
+                    state.stats.enemiesDestroyed = 0;
+                    state.stats.deepOnesSaved = 0;
+                    state.stats.maxCombo = 0;
+                    state.stats.startTime = Date.now();
+                    try {
+                        state.highScore = validateHighScore(localStorage.getItem(AUDIO_CFG.highScoreKey));
+                    } catch (e) {
+                        state.highScore = 0;
+                    }
+                    generateBackground();
+                    initLevel(state.level);
+                    playSound('levelBegin');
+                    startLoop('music', musicGain);
+                    startLoop('ambient', ambientGain);
+                    setState('PLAYING');
+                }
+                break;
+
+            case 'PLAYING':
+                if (input.pause) {
+                    setState('PAUSED');
+                    state.pauseStartTime = performance.now();
+                    return;
+                }
+                if (input.mute) {
+                    state.muted = !state.muted;
+                    updateMute();
+                }
+
+                // Update player
+                if (player && player.alive) {
+                    player.update(dt, input);
+                    if (input.fire || input.fireBuffered) {
+                        if (player.fire(playerProjectilePool)) {
+                            playSound('playerFire');
+                        }
+                    }
+                    if (input.dash) {
+                        player.dash();
+                    }
+                    if (input.bomb) {
+                        detonateBomb();
+                    }
+                }
+
+                // Update camera
+                updateCamera(dt);
+
+                // Update enemies
+                const attackingCrabCount = enemies.filter(
+                    e => e.alive && e.type === 'crab' && e.state === 'ATTACKING'
+                ).length;
+
+                for (let i = 0; i < enemies.length; i++) {
+                    const e = enemies[i];
+                    if (!e.alive) continue;
+                    switch (e.type) {
+                        case 'abductor':
+                            e.update(dt, deepOnes, monolith, player);
+                            // Handle mutation: Abductor reached surface with Deep One
+                            if (e.shouldMutate && e.target) {
+                                e.target.kill(); // Deep One is lost
+                                e.target = null;
+                                const m = new Mutant(e.x, e.y);
+                                enemies.push(m);
+                                e.kill();
+                            }
+                            break;
+                        case 'crab':
+                            e.update(dt, monolith, attackingCrabCount);
+                            break;
+                        case 'pursuer':
+                            if (player) {
+                                e.update(dt, player.x, player.y);
+                                // Handle firing
+                                if (e.shouldFire && enemyProjectilePool.count < ENEMY_PROJ_CFG.maxOnScreen) {
+                                    const dx = player.x - e.x;
+                                    const dy = player.y - e.y;
+                                    const dist = Math.sqrt(dx * dx + dy * dy);
+                                    if (dist > 0) {
+                                        enemyProjectilePool.acquire(
+                                            e.x + e.w / 2, e.y + e.h / 2,
+                                            (dx / dist) * ENEMY_PROJ_CFG.speed,
+                                            (dy / dist) * ENEMY_PROJ_CFG.speed
+                                        );
+                                    }
+                                    e.shouldFire = false;
+                                }
+                            }
+                            break;
+                        case 'drifter':
+                            e.update(dt);
+                            // Handle mine dropping
+                            if (e.shouldDropMine && mines.length < MINE_CFG.maxOnScreen) {
+                                mines.push({
+                                    x: e.x + e.w / 2 - MINE_CFG.w / 2,
+                                    y: e.y + e.h / 2 - MINE_CFG.h / 2,
+                                    lifetime: MINE_CFG.lifetime,
+                                    alive: true,
+                                });
+                                playSound('minePlacement');
+                                e.shouldDropMine = false;
+                            } else {
+                                e.shouldDropMine = false;
+                            }
+                            break;
+                        case 'mutant':
+                            if (player) e.update(dt, player.x, player.y);
+                            break;
+                    }
+                }
+
+                // Update Deep Ones
+                const enemiesCleared = state.enemiesRemaining === 0;
+                for (let i = 0; i < deepOnes.length; i++) {
+                    if (deepOnes[i].alive) {
+                        deepOnes[i].update(dt, monolith, enemiesCleared);
+                    }
+                }
+
+                // Update projectiles
+                playerProjectilePool.forEach((p) => {
+                    p.update(dt);
+                    if (!p.alive) playerProjectilePool.release(p);
+                });
+                enemyProjectilePool.forEach((p) => {
+                    p.update(dt);
+                    if (!p.alive) enemyProjectilePool.release(p);
+                });
+
+                // Update mines (Drifter bombs)
+                for (let i = mines.length - 1; i >= 0; i--) {
+                    mines[i].lifetime -= dt;
+                    if (mines[i].lifetime <= 0) {
+                        mines.splice(i, 1);
+                    }
+                }
+
+                // Update particles
+                particlePool.forEach((p) => {
+                    p.update(dt);
+                    if (!p.alive) particlePool.release(p);
+                });
+
+                // Update bubbles
+                if (Math.random() < PARALLAX.bubbleSpawnChance) {
+                    bubbles.push({
+                        x: camera.x + Math.random() * W,
+                        y: SEA_BOTTOM_Y - Math.random() * 10,
+                        r: 1 + Math.random() * 2,
+                        alpha: 0.3 + Math.random() * 0.4,
+                    });
+                }
+                for (let i = bubbles.length - 1; i >= 0; i--) {
+                    bubbles[i].y -= PARALLAX.bubbleRiseSpeed * dt;
+                    bubbles[i].x += Math.sin(bubbles[i].y * 0.05) * 0.2;
+                    if (bubbles[i].y < SEA_SURFACE_Y - 10) bubbles.splice(i, 1);
+                }
+
+                // Caustic animation
+                causticPhase += PARALLAX.causticAnimSpeed * dt;
+
+                // Combo timer
+                if (state.comboTimer > 0) {
+                    state.comboTimer -= dt;
+                    if (state.comboTimer <= 0) {
+                        state.comboMultiplier = 1;
+                        state.comboTimer = 0;
+                    }
+                }
+
+                // Effect timers
+                if (state.damageVignetteTimer > 0) state.damageVignetteTimer -= dt;
+                if (state.bombFlashTimer > 0) state.bombFlashTimer -= dt;
+
+                // Check Monolith destruction
+                if (monolith && monolith.hp <= 0) {
+                    state.lossReason = 'monolith_destroyed';
+                    playSound('gameOver');
+                    stopAllLoops();
+                    setState('GAME_OVER');
+                    break;
+                }
+
+                // Check level completion
+                state.enemiesRemaining = enemies.filter(e => e.alive).length;
+                state.deepOnesRemaining = deepOnes.filter(d => d.alive).length;
+
+                if (state.enemiesRemaining === 0 && state.enemiesSpawnedThisLevel > 0 && monolith && monolith.hp > 0) {
+                    // Calculate end-of-level bonus
+                    const bonus = calculateBonus(
+                        state.deepOnesRemaining,
+                        Math.round(monolith.hp / monolith.maxHP * 100)
+                    );
+                    state.score += bonus;
+                    state.transitionTimer = TIMING.levelTransitionFrames;
+                    playSound('levelComplete');
+                    setState('LEVEL_TRANSITION');
+                }
+                break;
+
+            case 'PAUSED':
+                // ── Resume check (Task 6.5) ──
+                if (input.pause) {
+                    setState('PLAYING');
+                    // Adjust lastTime to exclude paused duration
+                    const pausedDuration = performance.now() - state.pauseStartTime;
+                    state.lastTime += pausedDuration;
+                    return;
+                }
+                // Mute toggle still works while paused
+                if (input.mute) {
+                    state.muted = !state.muted;
+                    updateMute();
+                }
+                // All other game logic frozen — do nothing
+                break;
+
+            case 'DEATH_PAUSE':
+                // Count down death timer, then respawn or game over
+                state.deathTimer -= dt;
+                if (state.deathTimer <= 0) {
+                    if (state.lives > 0) {
+                        // Respawn player
+                        if (player) {
+                            const spawnPos = findSafeSpawnPosition(
+                                player.x, player.y, enemies,
+                                SPAWN_CFG.minDistFromRespawn, WORLD_W
+                            );
+                            player.x = spawnPos.x;
+                            player.y = spawnPos.y;
+                            player.vx = 0;
+                            player.vy = 0;
+                            player.alive = true;
+                            player.invincibilityTimer = PLAYER_CFG.invincibilityDuration;
+                            player.isDashing = false;
+                            player.dashTimer = 0;
+                            player.dashCooldownTimer = 0;
+                            player.shotCooldownTimer = 0;
+                            player.fireBuffered = false;
+                        }
+                        setState('PLAYING');
+                    } else {
+                        state.lossReason = 'player_death';
+                        playSound('gameOver');
+                        stopAllLoops();
+                        setState('GAME_OVER');
+                    }
+                }
+                break;
+
+            case 'LEVEL_TRANSITION':
+                state.transitionTimer -= dt;
+                if (state.transitionTimer < TIMING.levelTransitionFrames - 30) {
+                    if (input.fire || input.bomb || input.dash) {
+                        state.transitionTimer = 0;
+                    }
+                }
+                if (state.transitionTimer <= 0) {
+                    state.level++;
+                    state.stats.levelsCompleted++;
+                    state.bombs = Math.min(state.bombs + BOMB_CFG.earnPerLevel, BOMB_CFG.maxCount);
+                    initLevel(state.level);
+                    playSound('levelBegin');
+                    setState('PLAYING');
+                }
+                break;
+
+            case 'GAME_OVER':
+                // Update high score
+                if (state.score > state.highScore) {
+                    state.highScore = state.score;
+                    try {
+                        localStorage.setItem(AUDIO_CFG.highScoreKey, String(state.highScore));
+                    } catch (e) {
+                        // localStorage unavailable — silent fail
+                    }
+                }
+                // Check for restart input — restart game immediately
+                if (input.fire || input.bomb || input.dash) {
+                    state.score = 0;
+                    state.level = 1;
+                    state.lives = PLAYER_CFG.startLives;
+                    state.bombs = BOMB_CFG.startCount;
+                    state.comboMultiplier = 1;
+                    state.comboTimer = 0;
+                    state.lossReason = null;
+                    state.nextExtraLifeScore = SCORE_CFG.extraLifeInterval;
+                    state.damageVignetteTimer = 0;
+                    state.bombFlashTimer = 0;
+                    state.stats.levelsCompleted = 0;
+                    state.stats.enemiesDestroyed = 0;
+                    state.stats.deepOnesSaved = 0;
+                    state.stats.maxCombo = 0;
+                    state.stats.startTime = Date.now();
+                    generateBackground();
+                    initLevel(state.level);
+                    playSound('levelBegin');
+                    startLoop('music', musicGain);
+                    startLoop('ambient', ambientGain);
+                    state.mode = 'PLAYING';
+                }
+                // Q key — return to title screen
+                if (input.quit) {
+                    stopAllLoops();
+                    state.mode = 'START_SCREEN';
+                }
+                break;
+        }
+    }
+
+    // ── Render Pipeline ────────────────────────────────────────
+
+    function render() {
+        ctx.fillStyle = '#050a14';
+        ctx.fillRect(0, 0, W, H);
+        switch (state.mode) {
+            case 'START_SCREEN': renderStartScreen(); break;
+            case 'PLAYING': case 'DEATH_PAUSE': renderGameplay(); break;
+            case 'PAUSED': renderGameplay(); renderPauseOverlay(); break;
+            case 'LEVEL_TRANSITION': renderGameplay(); renderLevelTransition(); break;
+            case 'GAME_OVER': renderGameOver(); break;
+        }
+    }
+
+    function renderStartScreen() {
+        // Title background image (full canvas)
+        const bgImg = assets.title_bg;
+        if (bgImg && bgImg.complete && bgImg.naturalWidth > 0) {
+            ctx.drawImage(bgImg, 0, 0, W, H);
+        } else {
+            const grad = ctx.createLinearGradient(0, 0, 0, H);
+            grad.addColorStop(0, '#0a1628'); grad.addColorStop(0.3, '#0d1f3c'); grad.addColorStop(1, '#061018');
+            ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+        }
+
+        // Title logo (scaled down to fit, with smoothing)
+        const logoImg = assets.title_logo;
+        if (logoImg && logoImg.complete && logoImg.naturalWidth > 0) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            const maxW = W - 40;
+            const maxH = H / 2 - 10;
+            const scale = Math.min(maxW / logoImg.naturalWidth, maxH / logoImg.naturalHeight);
+            const logoW = logoImg.naturalWidth * scale;
+            const logoH = logoImg.naturalHeight * scale;
+            ctx.drawImage(logoImg, (W - logoW) / 2, 10, logoW, logoH);
+            ctx.imageSmoothingEnabled = false;
+        }
+
+        // Subtitle
+        drawTextCenter('LOVECRAFT ARCADE VOLUME 3', H / 2 + 15, '#4db6ac');
+
+        // Controls
+        drawTextCenter('ARROWS/WASD - MOVE', H / 2 + 40, '#78909c');
+        drawTextCenter('SPACE/Z - FIRE  X/B - BOMB', H / 2 + 52, '#78909c');
+        drawTextCenter('SHIFT/C - DASH  ESC/P - PAUSE', H / 2 + 64, '#78909c');
+
+        // Start prompt
+        const pulse = Math.sin(Date.now() * 0.004) * 0.3 + 0.7;
+        ctx.globalAlpha = pulse;
+        drawTextCenter('PRESS FIRE TO START', H / 2 + 90, '#ffeb3b');
+        ctx.globalAlpha = 1;
+
+        // High score
+        if (state.highScore > 0) {
+            drawTextCenter('HIGH SCORE: ' + state.highScore, H / 2 + 110, '#ff8a65');
+        }
+    }
+
+    function renderGameplay() {
+        const shX = camera.shakeX, shY = camera.shakeY;
+        // Far parallax gradient
+        const farGrad = ctx.createLinearGradient(0, 0, 0, H);
+        farGrad.addColorStop(0, '#0a1628'); farGrad.addColorStop(0.15, '#0d1f3c');
+        farGrad.addColorStop(0.85, '#081420'); farGrad.addColorStop(1, '#040a10');
+        ctx.fillStyle = farGrad; ctx.fillRect(0, 0, W, H);
+
+        // Background panorama (tiles with blended seams)
+        const bgImg = assets.background;
+        if (bgImg && bgImg.complete && bgImg.naturalWidth > 0) {
+            const bgW = bgImg.naturalWidth;  // 405
+            const bgH = bgImg.naturalHeight; // 270
+            const blendW = 40; // pixels of gradient blend at each seam
+            // Scroll at parallax rate (slower than camera)
+            const scrollX = camera.x * PARALLAX.farSpeedRatio;
+            // Calculate starting tile offset
+            const startOffset = -(scrollX % bgW);
+            // Draw enough tiles to cover viewport + blend zone
+            ctx.globalAlpha = 0.6; // blend with gradient behind
+            for (let tileX = startOffset - bgW; tileX < W + bgW; tileX += bgW) {
+                ctx.drawImage(bgImg, tileX + shX, shY, bgW, bgH);
+            }
+            // Draw blend patches at seams to hide repetition
+            for (let tileX = startOffset - bgW; tileX < W + bgW; tileX += bgW) {
+                const seamX = tileX + bgW; // right edge of this tile
+                // Gradient fade: left side of seam fades out, right side fades in
+                const grad = ctx.createLinearGradient(seamX - blendW / 2, 0, seamX + blendW / 2, 0);
+                grad.addColorStop(0, 'rgba(10, 22, 40, 0)');
+                grad.addColorStop(0.5, 'rgba(10, 22, 40, 0.7)');
+                grad.addColorStop(1, 'rgba(10, 22, 40, 0)');
+                ctx.fillStyle = grad;
+                ctx.fillRect(seamX - blendW / 2 + shX, shY, blendW, bgH);
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        // Bioluminescent dots (each drifts at its own parallax depth)
+        for (let i = 0; i < bgStars.length; i++) {
+            const s = bgStars[i];
+            // Each dot scrolls at its own parallax rate + slow drift
+            const drift = Date.now() * s.driftX;
+            let sx = (s.x + drift - camera.x * s.parallax) % WORLD_W;
+            if (sx < 0) sx += WORLD_W; sx = sx % (W * 2) - W * 0.5;
+            const vertDrift = Math.sin(Date.now() * s.driftY + s.phase) * 3;
+            const sy = worldToScreenY(s.y + vertDrift);
+            if (sx < -5 || sx > W + 5 || sy < -5 || sy > H + 5) continue;
+            const glow = Math.sin(causticPhase * s.speed * 50 + s.phase) * 0.3 + 0.7;
+            ctx.globalAlpha = glow * 0.5;
+            ctx.fillStyle = 'hsl(' + s.hue + ', 60%, 60%)';
+            ctx.beginPath(); ctx.arc(sx + shX, sy + shY, s.r, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+
+        // Fish schools swimming in background
+        const fishTime = Date.now() * 0.001;
+        for (let s = 0; s < fishSchools.length; s++) {
+            const school = fishSchools[s];
+            // School position moves over time in its swimming direction
+            const schoolX = school.baseX + school.dir * fishTime * school.speed * 60;
+            // Apply parallax scrolling
+            let screenBaseX = (schoolX - camera.x * school.parallax) % WORLD_W;
+            if (screenBaseX < 0) screenBaseX += WORLD_W;
+            screenBaseX = screenBaseX % (W * 3) - W;
+            const screenBaseY = worldToScreenY(school.baseY);
+            // Skip if school is off screen
+            if (screenBaseX < -60 || screenBaseX > W + 60 || screenBaseY < -30 || screenBaseY > H + 30) continue;
+            ctx.globalAlpha = 0.35;
+            ctx.fillStyle = 'hsl(' + school.hue + ', 40%, 45%)';
+            for (let f = 0; f < school.fish.length; f++) {
+                const fish = school.fish[f];
+                const wobbleX = Math.sin(fishTime * fish.wobbleSpeed * 10 + fish.wobblePhase) * 2;
+                const wobbleY = Math.cos(fishTime * fish.wobbleSpeed * 8 + fish.wobblePhase) * 1.5;
+                const fx = screenBaseX + fish.offsetX + wobbleX + shX;
+                const fy = screenBaseY + fish.offsetY + wobbleY + shY;
+                // Draw tiny fish shape (diamond/arrow)
+                ctx.beginPath();
+                if (school.dir > 0) {
+                    ctx.moveTo(fx + fish.size * 2, fy);
+                    ctx.lineTo(fx, fy - fish.size * 0.6);
+                    ctx.lineTo(fx - fish.size, fy);
+                    ctx.lineTo(fx, fy + fish.size * 0.6);
+                } else {
+                    ctx.moveTo(fx - fish.size * 2, fy);
+                    ctx.lineTo(fx, fy - fish.size * 0.6);
+                    ctx.lineTo(fx + fish.size, fy);
+                    ctx.lineTo(fx, fy + fish.size * 0.6);
+                }
+                ctx.fill();
+            }
+        }
+        ctx.globalAlpha = 1;
+
+        // Water surface
+        const surfaceY = worldToScreenY(SEA_SURFACE_Y) + shY;
+        ctx.fillStyle = '#1a3a5c'; ctx.fillRect(0, 0, W, Math.max(0, surfaceY));
+        ctx.strokeStyle = 'rgba(79, 195, 247, 0.4)'; ctx.lineWidth = 2; ctx.beginPath();
+        for (let wx = 0; wx < W; wx += 4) {
+            const wy = surfaceY + Math.sin(causticPhase * 2 + wx * 0.04) * 2;
+            if (wx === 0) ctx.moveTo(wx, wy); else ctx.lineTo(wx, wy);
+        }
+        ctx.stroke();
+        // Sea bottom — rolling terrain
+        const terrainColor1 = '#1a3a2a';
+        const terrainColor2 = '#0a1810';
+        ctx.fillStyle = terrainColor2;
+        // Draw terrain as a filled polygon
+        ctx.beginPath();
+        ctx.moveTo(-5, H + 10);
+        for (let screenX = -TERRAIN_RESOLUTION; screenX <= W + TERRAIN_RESOLUTION; screenX += TERRAIN_RESOLUTION) {
+            const worldX = camera.x + screenX;
+            const terrainY = getTerrainHeight(worldX);
+            const sy = Math.round(worldToScreenY(terrainY) + shY);
+            ctx.lineTo(Math.round(screenX + shX), sy);
+        }
+        ctx.lineTo(W + 10, H + 10);
+        ctx.closePath();
+        ctx.fill();
+        // Lighter top edge
+        ctx.strokeStyle = terrainColor1;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let screenX = -TERRAIN_RESOLUTION; screenX <= W + TERRAIN_RESOLUTION; screenX += TERRAIN_RESOLUTION) {
+            const worldX = camera.x + screenX;
+            const terrainY = getTerrainHeight(worldX);
+            const sy = Math.round(worldToScreenY(terrainY) + shY);
+            if (screenX <= 0) ctx.moveTo(Math.round(screenX + shX), sy);
+            else ctx.lineTo(Math.round(screenX + shX), sy);
+        }
+        ctx.stroke();
+        // Tentacle obstacles (rise from behind ocean floor, with wavy distortion)
+        const tentImg = assets.tentacle;
+        const waveTime = Date.now() * 0.002; // global wave time
+        const frameDtMs = state.dt * 16.667; // approximate ms this frame
+        for (let i = 0; i < tentacles.length; i++) {
+            const t = tentacles[i];
+            const tx = worldToScreenX(t.x);
+            if (tx + t.w < -30 || tx > W + 30) continue;
+
+            // Update rise state
+            if (t.riseDelay > 0) {
+                t.riseDelay -= frameDtMs;
+            } else if (t.pauseTimer > 0) {
+                t.pauseTimer -= frameDtMs;
+            } else {
+                t.riseAmount += t.riseDir * TENTACLE_CFG.riseSpeed * frameDtMs;
+                if (t.riseAmount >= 1) {
+                    t.riseAmount = 1;
+                    t.riseDir = -1;
+                    t.pauseTimer = TENTACLE_CFG.risePause;
+                } else if (t.riseAmount <= 0) {
+                    t.riseAmount = 0;
+                    t.riseDir = 1;
+                    t.pauseTimer = TENTACLE_CFG.risePause * 0.5;
+                }
+            }
+
+            if (t.riseAmount <= 0) continue; // fully hidden
+
+            // Visible height = total height × riseAmount
+            const visibleH = t.h * t.riseAmount;
+            // Top of visible portion (rises above terrain as riseAmount increases)
+            const topY = t.baseY - visibleH;
+            const ty = worldToScreenY(topY);
+            // Clip: bottom of tentacle is always at terrain level
+            const terrainScreenY = worldToScreenY(t.baseY);
+
+            if (tentImg && tentImg.complete && tentImg.naturalWidth > 0) {
+                const segs = TENTACLE_CFG.waveSegments;
+                const segH = visibleH / segs;
+                // Only draw the top portion of the sprite (the visible part)
+                const srcStartFrac = 1 - t.riseAmount; // start from this fraction into sprite
+                for (let s = 0; s < segs; s++) {
+                    const segY = ty + s * segH;
+                    // Don't draw below terrain
+                    if (segY + shY > terrainScreenY) break;
+                    const waveFactor = Math.pow(1 - (s / segs), 1.5);
+                    const waveOffset = Math.sin(waveTime * TENTACLE_CFG.waveSpeed + t.phase + s * 0.8) * TENTACLE_CFG.waveAmplitude * waveFactor;
+                    const srcY = (srcStartFrac + (s / segs) * t.riseAmount) * tentImg.naturalHeight;
+                    const srcH = (t.riseAmount / segs) * tentImg.naturalHeight;
+                    ctx.drawImage(
+                        tentImg,
+                        0, Math.floor(srcY), tentImg.naturalWidth, Math.ceil(srcH),
+                        tx + shX + waveOffset, segY + shY, t.w, segH + 1
+                    );
+                }
+            } else {
+                // Fallback: tapered green shape
+                ctx.fillStyle = '#1a3a2a';
+                ctx.beginPath();
+                const baseW = t.w;
+                const tipW = t.w * 0.3;
+                const segs = TENTACLE_CFG.waveSegments;
+                for (let s = 0; s <= segs; s++) {
+                    const frac = s / segs;
+                    const segY = ty + frac * visibleH;
+                    if (segY + shY > terrainScreenY) break;
+                    const waveFactor = Math.pow(1 - frac, 1.5);
+                    const waveOffset = Math.sin(waveTime * TENTACLE_CFG.waveSpeed + t.phase + s * 0.8) * TENTACLE_CFG.waveAmplitude * waveFactor;
+                    const w = tipW + (baseW - tipW) * frac;
+                    const cx = tx + shX + t.w / 2 + waveOffset;
+                    if (s === 0) ctx.moveTo(cx - w / 2, segY + shY);
+                    else ctx.lineTo(cx - w / 2, segY + shY);
+                }
+                for (let s = segs; s >= 0; s--) {
+                    const frac = s / segs;
+                    const segY = ty + frac * visibleH;
+                    if (segY + shY > terrainScreenY) continue;
+                    const waveFactor = Math.pow(1 - frac, 1.5);
+                    const waveOffset = Math.sin(waveTime * TENTACLE_CFG.waveSpeed + t.phase + s * 0.8) * TENTACLE_CFG.waveAmplitude * waveFactor;
+                    const w = tipW + (baseW - tipW) * frac;
+                    const cx = tx + shX + t.w / 2 + waveOffset;
+                    ctx.lineTo(cx + w / 2, segY + shY);
+                }
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+        // Ground features
+        for (let i = 0; i < groundFeatures.length; i++) {
+            const f = groundFeatures[i];
+            const fx = worldToScreenX(f.x), fy = worldToScreenY(f.y);
+            if (fx + f.w < -50 || fx > W + 50) continue;
+            const gfKey = 'ground_' + f.type;
+            const gfImg = assets[gfKey];
+            if (gfImg && gfImg.complete && gfImg.naturalWidth > 0) {
+                ctx.drawImage(gfImg, fx + shX, fy + shY, f.w, f.h);
+            } else {
+                ctx.fillStyle = f.color;
+                ctx.fillRect(fx + shX, fy + shY, f.w, f.h);
+            }
+        }
+        // Bubbles
+        for (let i = 0; i < bubbles.length; i++) {
+            const b = bubbles[i], bx = worldToScreenX(b.x), by = worldToScreenY(b.y);
+            if (bx < -5 || bx > W + 5) continue;
+            ctx.globalAlpha = b.alpha; ctx.fillStyle = 'rgba(120, 200, 255, 0.3)';
+            ctx.beginPath(); ctx.arc(bx + shX, by + shY, b.r, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        // Monolith
+        if (monolith && monolith.alive) {
+            const mx = worldToScreenX(monolith.x), my = worldToScreenY(monolith.y);
+            const monoImg = assets.monolith;
+            // Damage glow: draw sprite outline in red using offscreen canvas + shadow
+            if (monolith.hp < MONOLITH_CFG.maxHP * 0.5 && monoImg && monoImg.complete && monoImg.naturalWidth > 0) {
+                const glowAlpha = 0.3 + Math.sin(Date.now() * 0.008) * 0.2;
+                ctx.save();
+                ctx.globalAlpha = glowAlpha;
+                ctx.shadowColor = '#ff4444';
+                ctx.shadowBlur = 10;
+                const offsets = [[-2,0],[2,0],[0,-2],[0,2]];
+                for (let o = 0; o < offsets.length; o++) {
+                    ctx.drawImage(monoImg, mx + shX + offsets[o][0], my + shY + offsets[o][1], monolith.w, monolith.h);
+                }
+                ctx.shadowBlur = 0;
+                ctx.globalAlpha = 1;
+                ctx.restore();
+            }
+            if (monoImg && monoImg.complete && monoImg.naturalWidth > 0) {
+                ctx.globalAlpha = monolith.flashTimer > 0 ? 0.5 : 1.0;
+                ctx.drawImage(monoImg, mx + shX, my + shY, monolith.w, monolith.h);
+                ctx.globalAlpha = 1;
+            } else {
+                ctx.fillStyle = monolith.flashTimer > 0 ? '#ffffff' : monolith.damageState === 0 ? '#607d8b' : monolith.damageState === 1 ? '#78909c' : '#90a4ae';
+                ctx.fillRect(mx + shX, my + shY, monolith.w, monolith.h);
+            }
+            // Damage cracks overlay
+            if (monolith.damageState >= 1) {
+                ctx.globalAlpha = 0.4;
+                ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 1; ctx.beginPath();
+                ctx.moveTo(mx + shX + 10, my + shY + 12); ctx.lineTo(mx + shX + 20, my + shY + 30); ctx.stroke();
+                if (monolith.damageState >= 2) {
+                    ctx.moveTo(mx + shX + 25, my + shY + 8); ctx.lineTo(mx + shX + 18, my + shY + 40); ctx.stroke();
+                }
+                ctx.globalAlpha = 1;
+            }
+        }
+        // Deep Ones (face their travel direction)
+        for (let i = 0; i < deepOnes.length; i++) {
+            const d = deepOnes[i]; if (!d.alive) continue;
+            const doImg = assets.deep_one;
+            const dx = worldToScreenX(d.x), dy = worldToScreenY(d.y);
+            if (d.beingAbducted && Math.floor(Date.now() / 200) % 2 === 0) {
+                ctx.globalAlpha = 0.6;
+            }
+            // Determine facing from wanderDir or velocity
+            const facingRight = d.state === 'WANDERING' ? d.wanderDir > 0 :
+                                d.vx !== undefined ? d.vx >= 0 : true;
+            if (doImg && doImg.complete && doImg.naturalWidth > 0) {
+                ctx.save();
+                if (!facingRight) {
+                    ctx.translate(dx + shX + d.w, dy + shY);
+                    ctx.scale(-1, 1);
+                    ctx.drawImage(doImg, 0, 0, d.w, d.h);
+                } else {
+                    ctx.drawImage(doImg, dx + shX, dy + shY, d.w, d.h);
+                }
+                ctx.restore();
+            } else {
+                let color = d.state === 'REPAIRING' ? '#81c784' : d.beingAbducted && Math.floor(Date.now() / 200) % 2 === 0 ? '#ffeb3b' : '#66bb6a';
+                drawEntity(d, color);
+            }
+            ctx.globalAlpha = 1;
+        }
+        // Enemies
+        const eColors = { abductor: '#ab47bc', crab: '#ef5350', pursuer: '#ff7043', drifter: '#7e57c2', mutant: '#e53935' };
+        for (let i = 0; i < enemies.length; i++) { const e = enemies[i]; if (e.alive) drawEnemy(e, eColors[e.type] || '#ef5350'); }
+        // Player
+        drawPlayer();
+        // Player projectiles (with trail effect like Defender)
+        playerProjectilePool.forEach((p) => {
+            const px = worldToScreenX(p.x), py = worldToScreenY(p.y);
+            const ppImg = assets.player_projectile;
+            // Draw trail (fading copies behind the projectile)
+            const trailDir = p.vx > 0 ? -1 : 1;
+            for (let t = 1; t <= 4; t++) {
+                ctx.globalAlpha = 0.3 / t;
+                ctx.fillStyle = '#4fc3f7';
+                ctx.fillRect(px + shX + trailDir * t * 6, py + shY + 1, p.w - 2, p.h - 2);
+            }
+            ctx.globalAlpha = 1;
+            // Draw projectile
+            if (ppImg && ppImg.complete && ppImg.naturalWidth > 0) {
+                ctx.drawImage(ppImg, px + shX, py + shY, p.w, p.h);
+            } else {
+                ctx.fillStyle = '#fff176';
+                ctx.fillRect(px + shX, py + shY, p.w, p.h);
+            }
+            // Bright leading edge glow
+            ctx.globalAlpha = 0.5;
+            ctx.fillStyle = '#ffffff';
+            const leadX = p.vx > 0 ? px + shX + p.w - 2 : px + shX;
+            ctx.fillRect(leadX, py + shY, 2, p.h);
+            ctx.globalAlpha = 1;
+        });
+        // Enemy projectiles
+        enemyProjectilePool.forEach((p) => {
+            const px = worldToScreenX(p.x), py = worldToScreenY(p.y);
+            const epImg = assets.enemy_projectile;
+            if (epImg && epImg.complete && epImg.naturalWidth > 0) {
+                ctx.drawImage(epImg, px + shX, py + shY, p.w, p.h);
+            } else {
+                ctx.globalAlpha = 0.4; ctx.fillStyle = '#ff5722'; ctx.fillRect(px + shX - 1, py + shY - 1, p.w + 2, p.h + 2);
+                ctx.globalAlpha = 1; ctx.fillStyle = '#ff7043'; ctx.fillRect(px + shX, py + shY, p.w, p.h);
+            }
+        });
+        // Mines (Drifter bombs) — pulsing green glow
+        for (let i = 0; i < mines.length; i++) {
+            const m = mines[i];
+            const mx = worldToScreenX(m.x), my = worldToScreenY(m.y);
+            if (mx + MINE_CFG.w < -10 || mx > W + 10) continue;
+            const pulse = 0.4 + Math.sin(Date.now() * MINE_CFG.pulseSpeed + i * 2) * 0.3;
+            // Outer glow
+            ctx.globalAlpha = pulse * 0.5;
+            ctx.fillStyle = '#44ff66';
+            ctx.beginPath();
+            ctx.arc(mx + shX + MINE_CFG.w / 2, my + shY + MINE_CFG.h / 2, MINE_CFG.w * 0.8, 0, Math.PI * 2);
+            ctx.fill();
+            // Core
+            ctx.globalAlpha = pulse;
+            ctx.fillStyle = '#88ffaa';
+            ctx.beginPath();
+            ctx.arc(mx + shX + MINE_CFG.w / 2, my + shY + MINE_CFG.h / 2, MINE_CFG.w * 0.4, 0, Math.PI * 2);
+            ctx.fill();
+            // Bright center pixel
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(mx + shX + MINE_CFG.w / 2 - 1, my + shY + MINE_CFG.h / 2 - 1, 2, 2);
+        }
+        ctx.globalAlpha = 1;
+        // Particles
+        particlePool.forEach((p) => {
+            ctx.globalAlpha = p.alpha; ctx.fillStyle = p.color;
+            ctx.fillRect(worldToScreenX(p.x) + shX, worldToScreenY(p.y) + shY, Math.max(1, 2 * p.scale), Math.max(1, 2 * p.scale));
+        });
+        ctx.globalAlpha = 1;
+        // Off-screen indicators
+        if (player && player.alive) {
+            if (monolith && monolith.alive && enemies.some(e => e.alive && e.type === 'crab' && e.state === 'ATTACKING') && !isInViewport(monolith.x, monolith.w, camera.x, W, WORLD_W)) {
+                const dir = worldToScreenX(monolith.x) < 0 ? 0 : W - 10;
+                ctx.fillStyle = Math.floor(Date.now() / 300) % 2 === 0 ? '#ff4444' : '#ff8888';
+                ctx.fillRect(dir, H / 2 - 6, 8, 12);
+            }
+            for (let i = 0; i < deepOnes.length; i++) {
+                const d = deepOnes[i]; if (!d.alive || !d.beingAbducted) continue;
+                if (!isInViewport(d.x, d.w, camera.x, W, WORLD_W)) {
+                    const dir = worldToScreenX(d.x) < 0 ? 0 : W - 8;
+                    ctx.fillStyle = Math.floor(Date.now() / 250) % 2 === 0 ? '#ffeb3b' : '#ffc107';
+                    ctx.fillRect(dir, H / 3 - 4, 6, 8);
+                }
+            }
+        }
+        // Damage vignette
+        if (state.damageVignetteTimer > 0) {
+            const va = Math.min(0.4, state.damageVignetteTimer / TIMING.damageVignetteFrames * 0.4);
+            ctx.fillStyle = 'rgba(200, 30, 30, ' + va + ')';
+            ctx.fillRect(0, 0, W, 6); ctx.fillRect(0, H - 6, W, 6); ctx.fillRect(0, 0, 6, H); ctx.fillRect(W - 6, 0, 6, H);
+        }
+        // Bomb flash
+        if (state.bombFlashTimer > 0) {
+            ctx.fillStyle = 'rgba(255, 255, 255, ' + Math.min(0.5, state.bombFlashTimer / TIMING.bombFlashFrames * 0.5) + ')';
+            ctx.fillRect(0, 0, W, H);
+        }
+        // HUD
+        renderHUD();
+        // Mini-map
+        renderMiniMap();
+        // Death overlay
+        if (state.mode === 'DEATH_PAUSE') {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'; ctx.fillRect(0, 0, W, H);
+            drawTextLarge('DAGON FALLS', H / 2 - 14, '#ef5350');
+            drawTextCenter(state.lives > 0 ? 'LIVES REMAINING: ' + state.lives : 'NO LIVES REMAINING', H / 2 + 12, '#b0bec5');
+        }
+    }
+
+    function renderHUD() {
+        drawText('SCORE ' + state.score, 4, 16, '#e0e0e0');
+        drawText('LV ' + state.level, 4, 26, '#4db6ac');
+        // Lives
+        ctx.fillStyle = '#4fc3f7';
+        for (let i = 0; i < state.lives; i++) ctx.fillRect(80 + i * 10, 17, 6, 6);
+        // Bombs
+        ctx.fillStyle = '#ffab40';
+        for (let i = 0; i < state.bombs; i++) { ctx.beginPath(); ctx.arc(150 + i * 10, 20, 3, 0, Math.PI * 2); ctx.fill(); }
+        // Combo
+        if (state.comboMultiplier > 1) { drawText('X' + state.comboMultiplier, 210, 16, '#ffeb3b'); }
+        // Dash meter
+        if (player) {
+            const dp = player.dashCooldownTimer > 0 ? 1 - player.dashCooldownTimer / DASH_CFG.cooldown : 1;
+            ctx.fillStyle = '#263238'; ctx.fillRect(300, 17, 30, 5);
+            ctx.fillStyle = dp >= 1 ? '#4fc3f7' : '#37474f'; ctx.fillRect(300, 17, 30 * dp, 5);
+            drawText('DASH', 300, 24, '#78909c');
+        }
+        // Monolith health bar
+        if (monolith) {
+            const hp = monolith.hp / monolith.maxHP, bw = 60, bx = W - bw - 4;
+            ctx.fillStyle = '#263238'; ctx.fillRect(bx, 17, bw, 6);
+            ctx.fillStyle = hp > 0.66 ? '#66bb6a' : hp > 0.33 ? '#ffa726' : '#ef5350';
+            ctx.fillRect(bx, 17, bw * hp, 6);
+            ctx.strokeStyle = '#455a64'; ctx.lineWidth = 1; ctx.strokeRect(bx, 17, bw, 6);
+            drawText('MONOLITH', bx, 25, '#b0bec5');
+        }
+    }
+
+    function renderMiniMap() {
+        const mapH = 12, scale = W / WORLD_W;
+        ctx.fillStyle = 'rgba(0, 10, 20, 0.75)'; ctx.fillRect(0, 0, W, mapH);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)'; ctx.lineWidth = 1;
+        ctx.strokeRect(wrapPosition(camera.x, WORLD_W) * scale, 0, W * scale, mapH);
+        if (monolith && monolith.alive) {
+            const att = enemies.some(e => e.alive && e.type === 'crab' && e.state === 'ATTACKING');
+            ctx.fillStyle = att && Math.floor(Date.now() / 300) % 2 === 0 ? '#ff4444' : '#ffffff';
+            ctx.fillRect(monolith.x * scale, 2, 3, mapH - 4);
+        }
+        for (let i = 0; i < deepOnes.length; i++) {
+            const d = deepOnes[i]; if (!d.alive) continue;
+            ctx.fillStyle = d.beingAbducted && Math.floor(Date.now() / 200) % 2 === 0 ? '#ffeb3b' : '#66bb6a';
+            ctx.fillRect(d.x * scale, 4, 2, 4);
+        }
+        ctx.fillStyle = '#ef5350';
+        for (let i = 0; i < enemies.length; i++) if (enemies[i].alive) ctx.fillRect(enemies[i].x * scale, 3, 2, 5);
+        if (player && player.alive) { ctx.fillStyle = '#4fc3f7'; ctx.fillRect(player.x * scale - 1, 2, 4, mapH - 4); }
+    }
+
+    function renderPauseOverlay() {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.65)'; ctx.fillRect(0, 0, W, H);
+        drawTextLarge('PAUSED', H / 2 - 20, '#4fc3f7');
+        drawTextCenter('PRESS ESCAPE OR P TO RESUME', H / 2 + 10, '#b0bec5');
+        drawTextCenter('M - TOGGLE MUTE' + (state.muted ? ' .MUTED.' : ''), H / 2 + 24, '#b0bec5');
+    }
+
+    function renderLevelTransition() {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'; ctx.fillRect(0, 0, W, H);
+        drawTextLarge('LEVEL ' + state.level + ' COMPLETE', H / 2 - 40, '#4fc3f7');
+        drawTextCenter('DEEP ONES SAVED: ' + state.deepOnesRemaining + '/' + DEEP_ONE_CFG.count, H / 2 - 10, '#80cbc4');
+        if (monolith) drawTextCenter('MONOLITH: ' + Math.round(monolith.hp / monolith.maxHP * 100) + '%', H / 2 + 4, '#80cbc4');
+        drawTextCenter('PRESS FIRE TO CONTINUE', H / 2 + 28, '#b0bec5');
+    }
+
+    function renderGameOver() {
+        // Game over background image
+        const goImg = assets.gameover_bg;
+        if (goImg && goImg.complete && goImg.naturalWidth > 0) {
+            ctx.drawImage(goImg, 0, 0, W, H);
+        } else {
+            const grad = ctx.createLinearGradient(0, 0, 0, H);
+            grad.addColorStop(0, '#1a0a0a'); grad.addColorStop(1, '#0a0505');
+            ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+        }
+
+        drawTextLarge(state.lossReason === 'monolith_destroyed' ? 'THE MONOLITH HAS FALLEN' : 'DAGON HAS FALLEN', H / 2 - 70, '#ef5350');
+        drawTextCenter('FINAL SCORE: ' + state.score, H / 2 - 40, '#ffffff');
+        if (state.score >= state.highScore && state.score > 0) {
+            drawTextCenter('NEW HIGH SCORE!', H / 2 - 26, '#ffeb3b');
+        } else {
+            drawTextCenter('HIGH SCORE: ' + state.highScore, H / 2 - 26, '#ff8a65');
+        }
+        drawTextCenter('LEVELS: ' + state.stats.levelsCompleted + '  ENEMIES: ' + state.stats.enemiesDestroyed, H / 2, '#b0bec5');
+        drawTextCenter('SAVED: ' + state.stats.deepOnesSaved + '  MAX COMBO: X' + state.stats.maxCombo, H / 2 + 12, '#b0bec5');
+
+        const pulse = Math.sin(Date.now() * 0.004) * 0.3 + 0.7;
+        ctx.globalAlpha = pulse;
+        drawTextCenter('PRESS FIRE TO RESTART', H / 2 + 50, '#ffeb3b');
+        ctx.globalAlpha = 1;
+        drawTextCenter('PRESS Q FOR TITLE', H / 2 + 66, '#78909c');
+    }
+
+    /**
+     * Collision detection. Checks all relevant entity pairs using AABB.
+     */
+    function checkCollisions() {
+        // 1. Player projectiles vs enemies
+        playerProjectilePool.forEach((proj) => {
+            if (!proj.alive) return;
+            for (let i = 0; i < enemies.length; i++) {
+                const e = enemies[i];
+                if (!e.alive) continue;
+                if (aabb(proj.getHitbox(), e.getHitbox())) {
+                    proj.kill();
+                    playerProjectilePool.release(proj);
+                    damageEnemy(e);
+                    break;
+                }
+            }
+        });
+
+        // 2. Enemy projectiles vs player
+        if (player && player.alive && player.invincibilityTimer <= 0 && !player.isDashing) {
+            enemyProjectilePool.forEach((proj) => {
+                if (!proj.alive) return;
+                if (aabb(proj.getHitbox(), player.getHitbox())) {
+                    proj.kill();
+                    enemyProjectilePool.release(proj);
+                    playerHit();
+                }
+            });
+        }
+
+        // 3. Enemy bodies vs player
+        if (player && player.alive && player.invincibilityTimer <= 0 && !player.isDashing) {
+            for (let i = 0; i < enemies.length; i++) {
+                const e = enemies[i];
+                if (!e.alive) continue;
+                if (aabb(e.getHitbox(), player.getHitbox())) {
+                    playerHit();
+                    break;
+                }
+            }
+        }
+
+        // 3b. Mines vs player
+        if (player && player.alive && player.invincibilityTimer <= 0 && !player.isDashing) {
+            const playerHB = player.getHitbox();
+            for (let i = mines.length - 1; i >= 0; i--) {
+                const m = mines[i];
+                const mineHB = { x: m.x + MINE_CFG.hb.x, y: m.y + MINE_CFG.hb.y, w: MINE_CFG.hb.w, h: MINE_CFG.hb.h };
+                if (aabb(mineHB, playerHB)) {
+                    // Mine explodes and damages player
+                    spawnExplosion(m.x + MINE_CFG.w / 2, m.y + MINE_CFG.h / 2, '#44ff66', 10);
+                    playSound('mineDetonate');
+                    mines.splice(i, 1);
+                    playerHit();
+                    break;
+                }
+            }
+        }
+
+        // 3c. Player projectiles vs mines (player can shoot mines to destroy them)
+        playerProjectilePool.forEach((proj) => {
+            if (!proj.alive) return;
+            const projHB = proj.getHitbox();
+            for (let i = mines.length - 1; i >= 0; i--) {
+                const m = mines[i];
+                const mineHB = { x: m.x + MINE_CFG.hb.x, y: m.y + MINE_CFG.hb.y, w: MINE_CFG.hb.w, h: MINE_CFG.hb.h };
+                if (aabb(projHB, mineHB)) {
+                    spawnExplosion(m.x + MINE_CFG.w / 2, m.y + MINE_CFG.h / 2, '#44ff66', 6);
+                    mines.splice(i, 1);
+                    proj.kill();
+                    playerProjectilePool.release(proj);
+                    break;
+                }
+            }
+        });
+
+        // 3d. Tentacles vs player
+        if (player && player.alive && player.invincibilityTimer <= 0 && !player.isDashing) {
+            const playerHB = player.getHitbox();
+            for (let i = 0; i < tentacles.length; i++) {
+                const t = tentacles[i];
+                if (t.riseAmount <= 0) continue; // hidden, no collision
+                const visibleH = t.h * t.riseAmount;
+                const topY = t.baseY - visibleH;
+                const thb = {
+                    x: t.x + (t.w - TENTACLE_CFG.hitboxW) / 2,
+                    y: topY,
+                    w: TENTACLE_CFG.hitboxW,
+                    h: visibleH,
+                };
+                if (aabb(thb, playerHB)) {
+                    playerHit();
+                    break;
+                }
+            }
+        }
+
+        // 4. Crabs vs Monolith (handled in Crab.update via proximity, but ensure ATTACKING state)
+        // Already handled by Crab FSM — Crabs march to Monolith and switch to ATTACKING
+
+        // 5. Abductors vs Deep Ones
+        for (let i = 0; i < enemies.length; i++) {
+            const e = enemies[i];
+            if (!e.alive || e.type !== 'abductor' || e.state !== 'SEEKING') continue;
+            if (!e.target) continue;
+            for (let j = 0; j < deepOnes.length; j++) {
+                const d = deepOnes[j];
+                if (!d.alive || d.targeted || d.beingAbducted) continue;
+                if (aabb(e.getHitbox(), d.getHitbox())) {
+                    // Abductor grabs this Deep One
+                    e.target = d;
+                    d.targeted = true;
+                    e.state = 'GRABBING';
+                    e.grabTimer = 0;
+                    break;
+                }
+            }
+        }
+    }
+
+    /**
+     * Entity cleanup. Removes dead entities from arrays and returns
+     * pooled objects.
+     */
+    function cleanup() {
+        for (let i = enemies.length - 1; i >= 0; i--) {
+            if (!enemies[i].alive) enemies.splice(i, 1);
+        }
+        for (let i = deepOnes.length - 1; i >= 0; i--) {
+            if (!deepOnes[i].alive) deepOnes.splice(i, 1);
+        }
+        // Clean up released projectiles
+        playerProjectilePool.forEach((p) => {
+            if (!p.alive) playerProjectilePool.release(p);
+        });
+        enemyProjectilePool.forEach((p) => {
+            if (!p.alive) enemyProjectilePool.release(p);
+        });
+        particlePool.forEach((p) => {
+            if (!p.alive) particlePool.release(p);
+        });
+    }
+
+    /**
+     * The main game loop. Uses requestAnimationFrame for smooth 60fps.
+     * Computes delta-time, polls input, updates game state, and renders.
+     * Frame order: input → update → collisions → cleanup → render.
+     * Wrapped in try/catch for resilience — requestAnimationFrame is
+     * called outside the catch to ensure the loop never stops.
+     */
+    function gameLoop(now) {
+        try {
+            state.dt = computeDt(now, state.lastTime);
+            state.lastTime = now;
+
+            if (state.mode === 'PLAYING') {
+                input.poll();
+                update(state.dt);
+                checkCollisions();
+                cleanup();
+            } else if (state.mode === 'PAUSED') {
+                input.poll();
+                update(state.dt);
+            } else {
+                input.poll();
+                update(state.dt);
+            }
+            render();
+        } catch (err) {
+            console.error('Dagon: game loop error', err);
+        }
+        requestAnimationFrame(gameLoop);
+    }
+
+    // ── Initialize and Start ────────────────────────────────────
+
+    /**
+     * Load high score from localStorage with validation.
+     * Returns 0 on any failure (missing, corrupt, unavailable).
+     */
+    function loadHighScore() {
+        try {
+            const raw = localStorage.getItem(AUDIO_CFG.highScoreKey);
+            return validateHighScore(raw);
+        } catch (e) {
+            return 0;
+        }
+    }
+
+    /**
+     * Initialize the game and start the main loop.
+     * Sets initial state, loads persisted data, and kicks off
+     * the requestAnimationFrame loop.
+     */
+    function startGame() {
+        state.mode = 'START_SCREEN';
+        state.highScore = loadHighScore();
+
+        // Load accessibility settings from localStorage
+        try {
+            const savedAccess = localStorage.getItem(ACCESSIBILITY_CFG.localStorageKey);
+            if (savedAccess) {
+                const parsed = JSON.parse(savedAccess);
+                if (typeof parsed.reduceShake === 'boolean') state.accessibility.reduceShake = parsed.reduceShake;
+                if (typeof parsed.highContrastMiniMap === 'boolean') state.accessibility.highContrastMiniMap = parsed.highContrastMiniMap;
+            }
+        } catch (e) {
+            // Defaults already set
+        }
+
+        input.initKeyboard();
+        input.initGamepad();
+
+        // Generate QR code for tip jar
+        try {
+            if (typeof qrcode !== 'undefined') {
+                const qr = qrcode(0, 'M');
+                qr.addData('https://www.paypal.com/donate/?hosted_button_id=HDD77QKGC6XXN');
+                qr.make();
+                const qrEl = document.getElementById('qr-code');
+                if (qrEl) qrEl.innerHTML = qr.createImgTag(3, 0);
+            }
+        } catch (e) {
+            // QR library not loaded — silent fail
+        }
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    startGame();
+    </script>
+</body>
+</html>
